@@ -1,0 +1,50 @@
+{
+  "name": "@yume-dsl/render-core",
+  "version": "0.1.0",
+  "description": "Renderer core for yume-dsl-rich-text token trees",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "test": "tsup && node --import tsx tests/run-render-core-tests.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "yume-dsl",
+    "renderer",
+    "ast",
+    "render-core"
+  ],
+  "author": "Hoshino Yumeka",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "yume-dsl-rich-text": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}
