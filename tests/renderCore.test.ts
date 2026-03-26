@@ -119,6 +119,50 @@ const cases: TestCase[] = [
     },
   },
   {
+    name: "onError -> should observe unhandled throw strategy before throwing",
+    run: () => {
+      let seen:
+        | {
+            message: string;
+            phase: string;
+            tokenType?: string;
+            envMode?: string;
+          }
+        | undefined;
+
+      assert.throws(
+        () =>
+          Array.from(
+            interpretTokens(
+              parse("$$bold(hello)$$"),
+              {
+                createText: (text) => text,
+                interpret: () => ({ type: "unhandled" }),
+                onUnhandled: "throw",
+                onError: (context) => {
+                  seen = {
+                    message: context.error.message,
+                    phase: context.phase,
+                    tokenType: context.token?.type,
+                    envMode: context.env.mode,
+                  };
+                },
+              },
+              { mode: "observe" },
+            ),
+          ),
+        /No handler defined for DSL token type "bold"/,
+      );
+
+      assert.deepEqual(seen, {
+        message: 'No handler defined for DSL token type "bold"',
+        phase: "interpret",
+        tokenType: "bold",
+        envMode: "observe",
+      });
+    },
+  },
+  {
     name: "self recursion -> should throw",
     run: () => {
       assert.throws(
@@ -142,6 +186,50 @@ const cases: TestCase[] = [
     },
   },
   {
+    name: "onError -> should observe recursive token before throwing",
+    run: () => {
+      let seen:
+        | {
+            message: string;
+            phase: string;
+            tokenType?: string;
+          }
+        | undefined;
+
+      assert.throws(
+        () =>
+          Array.from(
+            interpretTokens(
+              parse("$$bold(hello)$$"),
+              {
+                createText: (text) => text,
+                interpret: (token, helpers) => {
+                  if (token.type !== "bold") return { type: "flatten" };
+                  return { type: "nodes", nodes: helpers.interpretChildren([token]) };
+                },
+                onUnhandled: "throw",
+                onError: (context) => {
+                  seen = {
+                    message: context.error.message,
+                    phase: context.phase,
+                    tokenType: context.token?.type,
+                  };
+                },
+              },
+              undefined,
+            ),
+          ),
+        /Recursive DSL token detected/,
+      );
+
+      assert.deepEqual(seen, {
+        message: 'Recursive DSL token detected for type "bold"',
+        phase: "traversal",
+        tokenType: "bold",
+      });
+    },
+  },
+  {
     name: "circular value -> should throw",
     run: () => {
       const loop: TextToken = { type: "loop", id: "x", value: [] };
@@ -162,6 +250,52 @@ const cases: TestCase[] = [
           ),
         /Circular DSL token/,
       );
+    },
+  },
+  {
+    name: "onError -> should observe invalid text token before throwing",
+    run: () => {
+      const badText = {
+        type: "text",
+        id: "bad",
+        value: [] as TextToken[],
+      } as unknown as TextToken;
+
+      let seen:
+        | {
+            message: string;
+            phase: string;
+            tokenType?: string;
+          }
+        | undefined;
+
+      assert.throws(
+        () =>
+          Array.from(
+            interpretTokens(
+              [badText],
+              {
+                createText: (text) => text,
+                interpret: () => ({ type: "drop" }),
+                onError: (context) => {
+                  seen = {
+                    message: context.error.message,
+                    phase: context.phase,
+                    tokenType: context.token?.type,
+                  };
+                },
+              },
+              undefined,
+            ),
+          ),
+        /DSL text token value must be a string/,
+      );
+
+      assert.deepEqual(seen, {
+        message: "DSL text token value must be a string",
+        phase: "traversal",
+        tokenType: "text",
+      });
     },
   },
 ];

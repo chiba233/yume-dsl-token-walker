@@ -62,6 +62,209 @@ const html = Array.from(
 
 ---
 
+## More Examples
+
+### Use `env` to inject runtime context
+
+```ts
+import { createSimpleInlineHandlers, createParser } from "yume-dsl-rich-text";
+import { interpretTokens } from "@yume-dsl/token-walker";
+
+const dsl = createParser({
+  handlers: createSimpleInlineHandlers(["bold"]),
+});
+
+const tokens = dsl.parse("Hello $$bold(world)$$");
+
+const result = Array.from(
+        interpretTokens(
+                tokens,
+                {
+                  createText: (text) => text,
+                  interpret: (token, helpers) => {
+                    if (token.type === "bold") {
+                      return {
+                        type: "nodes",
+                        nodes: [
+                          `<strong data-tone="${helpers.env.tone}">`,
+                          ...helpers.interpretChildren(token.value),
+                          "</strong>",
+                        ],
+                      };
+                    }
+
+                    return { type: "unhandled" };
+                  },
+                },
+                { tone: "soft" },
+        ),
+).join("");
+
+// "Hello <strong data-tone=\"soft\">world</strong>"
+```
+
+Use this when your output depends on theme, locale, permissions, feature flags, or renderer config.
+
+### Customize `onUnhandled`
+
+By default, unhandled tokens fall back to `"flatten"`:
+
+```ts
+const result = Array.from(
+        interpretTokens(
+                tokens,
+                {
+                  createText: (text) => text,
+                  interpret: () => ({ type: "unhandled" }),
+                },
+                undefined,
+        ),
+).join("");
+```
+
+For stricter behavior:
+
+```ts
+const strictRuleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: "throw" as const,
+};
+```
+
+For custom fallback output:
+
+```ts
+const debugRuleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: (token: { type: string }) => ({
+    type: "text" as const,
+    text: `[unhandled:${token.type}]`,
+  }),
+};
+```
+
+This is useful when:
+
+- production should silently flatten unsupported tags
+- tests should fail fast on missing handlers
+- debug builds should expose unhandled token types
+
+### Use `flattenText` inside a handler
+
+Sometimes you do not want to recursively interpret a subtree. You just want its readable text.
+
+```ts
+import { createSimpleInlineHandlers, createSimpleBlockHandlers, createParser } from "yume-dsl-rich-text";
+import { interpretTokens } from "@yume-dsl/token-walker";
+
+const dsl = createParser({
+  handlers: {
+    ...createSimpleInlineHandlers(["bold"]),
+    ...createSimpleBlockHandlers(["info"]),
+  },
+  blockTags: ["info"],
+});
+
+const tokens = dsl.parse("$$info(Title | hello $$bold(world)$$)$$");
+
+const result = Array.from(
+        interpretTokens(
+                tokens,
+                {
+                  createText: (text) => text,
+                  interpret: (token, helpers) => {
+                    if (token.type === "info") {
+                      return {
+                        type: "text",
+                        text: `[INFO] ${helpers.flattenText(token.value)}`,
+                      };
+                    }
+
+                    if (token.type === "bold") {
+                      return {
+                        type: "nodes",
+                        nodes: ["<strong>", ...helpers.interpretChildren(token.value), "</strong>"],
+                      };
+                    }
+
+                    return { type: "unhandled" };
+                  },
+                },
+                undefined,
+        ),
+).join("");
+
+// "[INFO] hello world"
+```
+
+Use `flattenText` when building search indexes, aria labels, previews, plain-text exports, or analytics labels.
+
+### Return structured nodes instead of strings
+
+`interpretTokens` does not care what `TNode` is. It can be strings, virtual nodes, AST nodes, or your own render model.
+
+```ts
+type HtmlNode =
+        | { kind: "text"; value: string }
+        | { kind: "element"; tag: string; children: HtmlNode[] };
+
+const nodes = Array.from(
+        interpretTokens<HtmlNode, void>(
+                tokens,
+                {
+                  createText: (text) => ({ kind: "text", value: text }),
+                  interpret: (token, helpers) => {
+                    if (token.type === "bold") {
+                      return {
+                        type: "nodes",
+                        nodes: [
+                          {
+                            kind: "element",
+                            tag: "strong",
+                            children: Array.from(helpers.interpretChildren(token.value)),
+                          },
+                        ],
+                      };
+                    }
+
+                    return { type: "unhandled" };
+                  },
+                },
+                undefined,
+        ),
+);
+```
+
+This is the intended shape if you want to bridge the token tree into React, Vue, Svelte, HTML AST, or your own renderer.
+
+### Drop a token entirely
+
+```ts
+const result = Array.from(
+        interpretTokens(
+                tokens,
+                {
+                  createText: (text) => text,
+                  interpret: (token) => {
+                    if (token.type === "comment") {
+                      return { type: "drop" };
+                    }
+
+                    return { type: "unhandled" };
+                  },
+                  onUnhandled: "flatten",
+                },
+                undefined,
+        ),
+).join("");
+```
+
+Use `"drop"` when a token is metadata-only and should produce no output.
+
+---
+
 ## API
 
 ### `interpretTokens(tokens, ruleset, env)`
@@ -99,6 +302,12 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
   createText: (text: string) => TNode;
   interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
   onUnhandled?: UnhandledStrategy<TNode, TEnv>;
+  onError?: (context: {
+    error: Error;
+    phase: "interpret" | "flatten" | "traversal" | "internal";
+    token?: TextToken;
+    env: TEnv;
+  }) => void;
 }
 ```
 
@@ -107,6 +316,7 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
 | `createText`  | Wrap a plain string into your node type                                  |
 | `interpret`   | Map a DSL token to an interpret result                                   |
 | `onUnhandled` | What to do when `interpret` returns `"unhandled"` (default: `"flatten"`) |
+| `onError`     | Optional observer called before any error is thrown                      |
 
 ---
 
@@ -156,6 +366,59 @@ type UnhandledStrategy<TNode, TEnv = unknown> =
 
 ---
 
+## onError
+
+Optional error observer. Called with context before the error is thrown. It does **not** suppress the error — the error
+is always rethrown after `onError` returns.
+
+```ts
+const ruleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: "throw" as const,
+  onError: ({ error, phase, token, env }) => {
+    console.error(`[${phase}] ${error.message}`, token?.type);
+  },
+};
+```
+
+### Error phases
+
+| Phase         | Trigger                                                                                       |
+|---------------|-----------------------------------------------------------------------------------------------|
+| `"interpret"` | `interpret()` throws, `onUnhandled` strategy function throws, or `onUnhandled: "throw"` fires |
+| `"flatten"`   | `flattenText` fails (e.g. circular value)                                                     |
+| `"traversal"` | Structural error — invalid text token value, recursive token detected                         |
+| `"internal"`  | Unexpected internal state (e.g. unknown result type)                                          |
+
+### Logging errors without stopping iteration
+
+Since `onError` is called before the throw, you can use it to log, report, or collect errors — even though the error
+will still propagate:
+
+```ts
+const errors: Error[] = [];
+
+const ruleset = {
+  createText: (text: string) => text,
+  interpret: (token: TextToken) => {
+    if (token.type === "bold") throw new Error("boom");
+    return { type: "unhandled" as const };
+  },
+  onError: ({ error }) => {
+    errors.push(error);
+  },
+};
+
+try {
+  Array.from(interpretTokens(tokens, ruleset, undefined));
+} catch {
+  // errors[] now contains the observed error
+}
+```
+
+---
+
 ## InterpretHelpers
 
 Passed to `interpret` and strategy functions:
@@ -180,7 +443,10 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 
 - **Self-recursion detection**: if a handler feeds a token back into `interpretChildren` referencing itself, an error is
   thrown immediately
-- **Circular value detection**: `flattenText` tracks visited tokens per recursion path (not globally), so shared references are safe but true cycles throw
+- **Circular value detection**: `flattenText` tracks visited tokens per recursion path (not globally), so shared
+  references are safe but true cycles throw
+- **Error observation**: all errors (from `interpret`, `onUnhandled` strategy functions, `flattenText`, and traversal
+  checks) are routed through `onError` before being thrown
 
 ---
 
@@ -188,6 +454,9 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 
 ### 0.1.0
 
+- Added `onError` observer — called with `{ error, phase, token, env }` before any error is thrown
+- Error phases: `"interpret"`, `"flatten"`, `"traversal"`, `"internal"`
+- Errors from `onUnhandled` strategy functions are now caught and routed through `onError`
 - Renamed package to `@yume-dsl/token-walker`
 - `renderTokens` → `interpretTokens`, `TokenRenderer` → `InterpretRuleset`
 - `defer` → `unhandled`, `empty` → `drop`

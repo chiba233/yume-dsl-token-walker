@@ -62,6 +62,209 @@ const html = Array.from(
 
 ---
 
+## 更多示例
+
+### 用 `env` 注入运行时上下文
+
+```ts
+import { createSimpleInlineHandlers, createParser } from "yume-dsl-rich-text";
+import { interpretTokens } from "@yume-dsl/token-walker";
+
+const dsl = createParser({
+  handlers: createSimpleInlineHandlers(["bold"]),
+});
+
+const tokens = dsl.parse("Hello $$bold(world)$$");
+
+const result = Array.from(
+  interpretTokens(
+    tokens,
+    {
+      createText: (text) => text,
+      interpret: (token, helpers) => {
+        if (token.type === "bold") {
+          return {
+            type: "nodes",
+            nodes: [
+              `<strong data-tone="${helpers.env.tone}">`,
+              ...helpers.interpretChildren(token.value),
+              "</strong>",
+            ],
+          };
+        }
+
+        return { type: "unhandled" };
+      },
+    },
+    { tone: "soft" },
+  ),
+).join("");
+
+// "Hello <strong data-tone=\"soft\">world</strong>"
+```
+
+适合把主题、语言、权限、功能开关或渲染配置透传给解释器。
+
+### 自定义 `onUnhandled`
+
+默认情况下，未处理 token 会走 `"flatten"`：
+
+```ts
+const result = Array.from(
+  interpretTokens(
+    tokens,
+    {
+      createText: (text) => text,
+      interpret: () => ({ type: "unhandled" }),
+    },
+    undefined,
+  ),
+).join("");
+```
+
+如果你想要严格模式：
+
+```ts
+const strictRuleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: "throw" as const,
+};
+```
+
+如果你想输出调试占位：
+
+```ts
+const debugRuleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: (token: { type: string }) => ({
+    type: "text" as const,
+    text: `[unhandled:${token.type}]`,
+  }),
+};
+```
+
+常见用途：
+
+- 线上环境平滑降级
+- 测试环境对漏写 handler 直接报错
+- 调试环境把未处理 token 类型直接暴露出来
+
+### 在 handler 内使用 `flattenText`
+
+有些时候你不想递归解释整个子树，而是只想拿到它的可读文本。
+
+```ts
+import { createSimpleInlineHandlers, createSimpleBlockHandlers, createParser } from "yume-dsl-rich-text";
+import { interpretTokens } from "@yume-dsl/token-walker";
+
+const dsl = createParser({
+  handlers: {
+    ...createSimpleInlineHandlers(["bold"]),
+    ...createSimpleBlockHandlers(["info"]),
+  },
+  blockTags: ["info"],
+});
+
+const tokens = dsl.parse("$$info(Title | hello $$bold(world)$$)$$");
+
+const result = Array.from(
+  interpretTokens(
+    tokens,
+    {
+      createText: (text) => text,
+      interpret: (token, helpers) => {
+        if (token.type === "info") {
+          return {
+            type: "text",
+            text: `[INFO] ${helpers.flattenText(token.value)}`,
+          };
+        }
+
+        if (token.type === "bold") {
+          return {
+            type: "nodes",
+            nodes: ["<strong>", ...helpers.interpretChildren(token.value), "</strong>"],
+          };
+        }
+
+        return { type: "unhandled" };
+      },
+    },
+    undefined,
+  ),
+).join("");
+
+// "[INFO] hello world"
+```
+
+这类写法适合做搜索索引、摘要、aria label、纯文本导出或埋点文案。
+
+### 返回结构化节点，而不只是字符串
+
+`interpretTokens` 不关心 `TNode` 是什么。它可以是字符串、虚拟节点、AST 节点，或者你自己的渲染模型。
+
+```ts
+type HtmlNode =
+  | { kind: "text"; value: string }
+  | { kind: "element"; tag: string; children: HtmlNode[] };
+
+const nodes = Array.from(
+  interpretTokens<HtmlNode, void>(
+    tokens,
+    {
+      createText: (text) => ({ kind: "text", value: text }),
+      interpret: (token, helpers) => {
+        if (token.type === "bold") {
+          return {
+            type: "nodes",
+            nodes: [
+              {
+                kind: "element",
+                tag: "strong",
+                children: Array.from(helpers.interpretChildren(token.value)),
+              },
+            ],
+          };
+        }
+
+        return { type: "unhandled" };
+      },
+    },
+    undefined,
+  ),
+);
+```
+
+如果你要对接 React、Vue、Svelte、HTML AST 或自定义 renderer，这才是更自然的用法。
+
+### 完全丢弃某类 token
+
+```ts
+const result = Array.from(
+  interpretTokens(
+    tokens,
+    {
+      createText: (text) => text,
+      interpret: (token) => {
+        if (token.type === "comment") {
+          return { type: "drop" };
+        }
+
+        return { type: "unhandled" };
+      },
+      onUnhandled: "flatten",
+    },
+    undefined,
+  ),
+).join("");
+```
+
+`"drop"` 适合只承载元信息、不应该产生可见输出的 token。
+
+---
+
 ## API
 
 ### `interpretTokens(tokens, ruleset, env)`
@@ -99,6 +302,12 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
   createText: (text: string) => TNode;
   interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
   onUnhandled?: UnhandledStrategy<TNode, TEnv>;
+  onError?: (context: {
+    error: Error;
+    phase: "interpret" | "flatten" | "traversal" | "internal";
+    token?: TextToken;
+    env: TEnv;
+  }) => void;
 }
 ```
 
@@ -107,6 +316,7 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
 | `createText`  | 将纯字符串包装为你的节点类型                                        |
 | `interpret`   | 将 DSL token 映射为解释结果                                   |
 | `onUnhandled` | 当 `interpret` 返回 `"unhandled"` 时的处理策略（默认：`"flatten"`） |
+| `onError`     | 可选的错误观察回调，在抛出错误前调用                                    |
 
 ---
 
@@ -156,6 +366,57 @@ type UnhandledStrategy<TNode, TEnv = unknown> =
 
 ---
 
+## onError
+
+可选的错误观察回调。在错误抛出前调用，携带上下文信息。它**不会**吞掉错误 — `onError` 返回后错误仍会被重新抛出。
+
+```ts
+const ruleset = {
+  createText: (text: string) => text,
+  interpret: () => ({ type: "unhandled" as const }),
+  onUnhandled: "throw" as const,
+  onError: ({ error, phase, token, env }) => {
+    console.error(`[${phase}] ${error.message}`, token?.type);
+  },
+};
+```
+
+### 错误阶段
+
+| 阶段            | 触发场景                                                              |
+|---------------|-------------------------------------------------------------------|
+| `"interpret"` | `interpret()` 抛出、`onUnhandled` 策略函数抛出、或 `onUnhandled: "throw"` 触发 |
+| `"flatten"`   | `flattenText` 失败（如循环引用）                                           |
+| `"traversal"` | 结构错误 — 无效的 text token value、递归 token 检测                           |
+| `"internal"`  | 内部异常状态（如未知的 result type）                                          |
+
+### 记录错误但不阻止传播
+
+`onError` 在抛出前调用，因此你可以用它来日志、上报或收集错误 — 即使错误仍然会向上传播：
+
+```ts
+const errors: Error[] = [];
+
+const ruleset = {
+  createText: (text: string) => text,
+  interpret: (token: TextToken) => {
+    if (token.type === "bold") throw new Error("boom");
+    return { type: "unhandled" as const };
+  },
+  onError: ({ error }) => {
+    errors.push(error);
+  },
+};
+
+try {
+  Array.from(interpretTokens(tokens, ruleset, undefined));
+} catch {
+  // errors[] 现在包含了观察到的错误
+}
+```
+
+---
+
 ## InterpretHelpers
 
 传给 `interpret` 和策略函数的辅助对象：
@@ -180,6 +441,7 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 
 - **自引用检测**：如果处理器将 token 自身回传给 `interpretChildren`，立即抛出错误
 - **循环引用检测**：`flattenText` 按递归路径追踪已访问 token（非全局），共享引用安全，真正的循环会抛出
+- **错误观察**：所有错误（来自 `interpret`、`onUnhandled` 策略函数、`flattenText` 和遍历检查）均会在抛出前经过 `onError` 回调
 
 ---
 
@@ -187,6 +449,9 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 
 ### 0.1.0
 
+- 新增 `onError` 错误观察回调 — 在抛出前调用，携带 `{ error, phase, token, env }` 上下文
+- 错误阶段：`"interpret"`、`"flatten"`、`"traversal"`、`"internal"`
+- `onUnhandled` 策略函数抛出的错误现在也会经过 `onError` 回调
 - 包重命名为 `@yume-dsl/token-walker`
 - `renderTokens` → `interpretTokens`，`TokenRenderer` → `InterpretRuleset`
 - `defer` → `unhandled`，`empty` → `drop`

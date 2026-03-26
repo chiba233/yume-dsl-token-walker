@@ -1,7 +1,7 @@
 {
   "name": "@yume-dsl/token-walker",
   "version": "0.1.0",
-  "description": "Renderer core for yume-dsl-rich-text token trees",
+  "description": "interpret / walk / execute token tree",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE"
   ],
   "type": "module",
@@ -30,9 +31,11 @@
   },
   "keywords": [
     "yume-dsl",
-    "renderer",
+    "dsl",
+    "interpreter",
+    "token",
     "ast",
-    "render-core"
+    "visitor"
   ],
   "author": "Hoshino Yumeka",
   "license": "MIT",

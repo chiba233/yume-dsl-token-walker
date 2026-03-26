@@ -33,6 +33,12 @@ export interface InterpretRuleset<TNode, TEnv = unknown> {
   createText: (text: string) => TNode;
   interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
   onUnhandled?: UnhandledStrategy<TNode, TEnv>;
+  onError?: (context: {
+    error: Error;
+    phase: "interpret" | "flatten" | "traversal" | "internal";
+    token?: TextToken;
+    env: TEnv;
+  }) => void;
 }
 
 // ── Companion utility: flattenText ──
@@ -72,6 +78,24 @@ const flattenTokenText = (
 export const flattenText = (value: string | TextToken[]): string =>
   flattenTokenText(value, new WeakSet<object>(), new WeakSet<object>());
 
+// ── Internal: error emission ──
+
+const emitError = <TNode, TEnv>(
+  ruleset: InterpretRuleset<TNode, TEnv>,
+  env: TEnv,
+  error: Error,
+  phase: "interpret" | "flatten" | "traversal" | "internal",
+  token?: TextToken,
+): never => {
+  ruleset.onError?.({
+    error,
+    phase,
+    token,
+    env,
+  });
+  throw error;
+};
+
 // ── Internal: resolve & iterate ──
 
 const iterateResolved = function* <TNode, TEnv>(
@@ -88,12 +112,28 @@ const iterateResolved = function* <TNode, TEnv>(
       yield ruleset.createText(result.text);
       return;
     case "flatten":
-      yield ruleset.createText(helpers.flattenText(token.value));
+      try {
+        yield ruleset.createText(helpers.flattenText(token.value));
+      } catch (error) {
+        emitError(
+          ruleset,
+          helpers.env,
+          error instanceof Error ? error : new Error("Failed to flatten DSL token"),
+          "flatten",
+          token,
+        );
+      }
       return;
     case "drop":
       return;
     default:
-      throw new Error("Unexpected interpret result type");
+      return emitError(
+        ruleset,
+        helpers.env,
+        new Error("Unexpected interpret result type"),
+        "internal",
+        token,
+      );
   }
 };
 
@@ -102,24 +142,59 @@ const resolveResult = <TNode, TEnv>(
   ruleset: InterpretRuleset<TNode, TEnv>,
   helpers: InterpretHelpers<TNode, TEnv>,
 ): ResolvedResult<TNode> => {
-  const result = ruleset.interpret(token, helpers);
+  const result = (() => {
+    try {
+      return ruleset.interpret(token, helpers);
+    } catch (error) {
+      return emitError(
+        ruleset,
+        helpers.env,
+        error instanceof Error ? error : new Error("DSL token interpretation failed"),
+        "interpret",
+        token,
+      );
+    }
+  })();
+
   if (result.type !== "unhandled") return result;
 
   const strategy = ruleset.onUnhandled ?? "flatten";
 
   if (typeof strategy === "function") {
-    return strategy(token, helpers);
+    try {
+      return strategy(token, helpers);
+    } catch (error) {
+      return emitError(
+        ruleset,
+        helpers.env,
+        error instanceof Error ? error : new Error(String(error)),
+        "interpret",
+        token,
+      );
+    }
   }
 
   switch (strategy) {
     case "throw":
-      throw new Error(`No handler defined for DSL token type "${token.type}"`);
+      return emitError(
+        ruleset,
+        helpers.env,
+        new Error(`No handler defined for DSL token type "${token.type}"`),
+        "interpret",
+        token,
+      );
     case "flatten":
       return { type: "flatten" };
     case "drop":
       return { type: "drop" };
     default:
-      throw new Error("Unknown unhandled strategy");
+      return emitError(
+        ruleset,
+        helpers.env,
+        new Error("Unknown unhandled strategy"),
+        "internal",
+        token,
+      );
   }
 };
 
@@ -134,14 +209,26 @@ const interpretIterable = function* <TNode, TEnv>(
   for (const token of tokens) {
     if (token.type === "text") {
       if (typeof token.value !== "string") {
-        throw new Error("DSL text token value must be a string");
+        return emitError(
+          ruleset,
+          helpers.env,
+          new Error("DSL text token value must be a string"),
+          "traversal",
+          token,
+        );
       }
       yield ruleset.createText(token.value);
       continue;
     }
 
     if (activeTokens.has(token)) {
-      throw new Error(`Recursive DSL token detected for type "${token.type}"`);
+      return emitError(
+        ruleset,
+        helpers.env,
+        new Error(`Recursive DSL token detected for type "${token.type}"`),
+        "traversal",
+        token,
+      );
     }
 
     activeTokens.add(token);
