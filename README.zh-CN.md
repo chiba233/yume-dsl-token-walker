@@ -591,6 +591,7 @@ try {
 - `fromHandlerMap` 的 handler 返回类型收紧为 `ResolvedResult` — handler 内不应返回 `"unhandled"`
 - 源码拆分为 `types.ts`、`interpret.ts`、`helpers.ts`（`index.ts` 统一 re-export）
 - README：添加目录、导出一览表，按类别分组
+- 更新 "yume-dsl-rich-text" 到 "0.1.14"，虽然此版本只是更新readme
 
 ### 0.1.0
 

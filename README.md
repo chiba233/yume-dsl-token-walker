@@ -599,6 +599,7 @@ try {
 - `fromHandlerMap` handler return type narrowed to `ResolvedResult` — handlers should not return `"unhandled"`
 - Split source into `types.ts`, `interpret.ts`, `helpers.ts` (barrel re-export from `index.ts`)
 - README: added table of contents, exports table, grouped sections by category
+- Update "yume-dsl-rich-text" to "0.1.14"
 
 ### 0.1.0
 
