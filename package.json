@@ -1,5 +1,5 @@
 {
-  "name": "@yume-dsl/render-core",
+  "name": "@yume-dsl/token-walker",
   "version": "0.1.0",
   "description": "Renderer core for yume-dsl-rich-text token trees",
   "main": "./dist/index.cjs",
@@ -38,11 +38,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/chiba233/yume-dsl-render-core.git"
+    "url": "git+https://github.com/chiba233/yume-dsl-token-walker.git"
   },
-  "homepage": "https://github.com/chiba233/yume-dsl-render-core#readme",
+  "homepage": "https://github.com/chiba233/yume-dsl-token-walker#readme",
   "bugs": {
-    "url": "https://github.com/chiba233/yume-dsl-render-core/issues"
+    "url": "https://github.com/chiba233/yume-dsl-token-walker/issues"
   },
   "engines": {
     "node": ">=18"

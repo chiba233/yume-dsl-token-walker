@@ -1,36 +1,34 @@
 **English** | [中文](./README.zh-CN.md)
 
-# @yume-dsl/render-core
+# @yume-dsl/token-walker
 
 <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
 
-[![npm](https://img.shields.io/npm/v/@yume-dsl/render-core)](https://www.npmjs.com/package/@yume-dsl/render-core)
-[![GitHub](https://img.shields.io/badge/GitHub-chiba233%2Fyume--dsl--render--core-181717?logo=github)](https://github.com/chiba233/yume-dsl-render-core)
+[![npm](https://img.shields.io/npm/v/@yume-dsl/token-walker)](https://www.npmjs.com/package/@yume-dsl/token-walker)
+[![GitHub](https://img.shields.io/badge/GitHub-chiba233%2Fyume--dsl--token--walker-181717?logo=github)](https://github.com/chiba233/yume-dsl-token-walker)
 
-A generic, lazy, generator-based renderer for
-[`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL) token trees.
+A generic, lazy, generator-based token tree interpreter for
+[`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL).
 
-**Rendering core only.**
-This package provides the traversal contract and safety guarantees.
-Concrete output (HTML, Vue, React, ...) is defined by your `TokenRenderer`.
+You provide rules. It walks the tree, yields output nodes, and gets out of the way.
 
 ---
 
 ## Ecosystem
 
-| Package | Role |
-|---------|------|
-| [`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL) | Parser core — text to token tree |
-| **`@yume-dsl/render-core`** | Render core — token tree to output nodes (this package) |
+| Package                                                     | Role                                                    |
+|-------------------------------------------------------------|---------------------------------------------------------|
+| [`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL) | Parser — text to token tree                             |
+| **`@yume-dsl/token-walker`**                                | Interpreter — token tree to output nodes (this package) |
 
 ---
 
 ## Install
 
 ```bash
-npm install @yume-dsl/render-core
+npm install @yume-dsl/token-walker
 # or
-pnpm add @yume-dsl/render-core
+pnpm add @yume-dsl/token-walker
 ```
 
 `yume-dsl-rich-text` is a dependency and will be installed automatically.
@@ -41,20 +39,20 @@ pnpm add @yume-dsl/render-core
 
 ```ts
 import { parseRichText, createSimpleInlineHandlers } from "yume-dsl-rich-text";
-import { renderTokens, collectRendered } from "@yume-dsl/render-core";
+import { interpretTokens } from "@yume-dsl/token-walker";
 
 const handlers = createSimpleInlineHandlers(["bold", "italic"]);
 const tokens = parseRichText("$$bold(a $$italic(b)$$ c)$$", { handlers });
 
-const html = collectRendered(
-  renderTokens(tokens, {
+const html = Array.from(
+  interpretTokens(tokens, {
     createText: (text) => text,
-    render: (token, helpers) => {
+    interpret: (token, helpers) => {
       if (token.type === "bold")
-        return { type: "tokens", tokens: ["<strong>", ...helpers.renderChildren(token.value), "</strong>"] };
+        return { type: "nodes", nodes: ["<strong>", ...helpers.interpretChildren(token.value), "</strong>"] };
       if (token.type === "italic")
-        return { type: "tokens", tokens: ["<em>", ...helpers.renderChildren(token.value), "</em>"] };
-      return { type: "defer" };
+        return { type: "nodes", nodes: ["<em>", ...helpers.interpretChildren(token.value), "</em>"] };
+      return { type: "unhandled" };
     },
   }, {}),
 ).join("");
@@ -66,33 +64,25 @@ const html = collectRendered(
 
 ## API
 
-### `renderTokens(tokens, renderer, env)`
+### `interpretTokens(tokens, ruleset, env)`
 
-Lazily traverses a `TextToken[]` tree and yields `TNode` values via a generator.
+Lazily walks a `TextToken[]` tree and yields `TNode` values via a generator.
 
 ```ts
-function* renderTokens<TNode, TEnv>(
+function* interpretTokens<TNode, TEnv>(
   tokens: TextToken[],
-  renderer: TokenRenderer<TNode, TEnv>,
+  ruleset: InterpretRuleset<TNode, TEnv>,
   env: TEnv,
 ): Generator<TNode>;
 ```
 
-- Streaming — nodes are yielded one at a time, never buffered into an array internally
+- Streaming — nodes are yielded one at a time, never buffered
 - Recursion-safe — detects self-referencing tokens and throws
 - Circular-safe — detects circular `value` arrays during `flattenText` and throws
 
-### `collectRendered(iterable)`
-
-Convenience helper that collects an `Iterable<TNode>` into `TNode[]`.
-
-```ts
-const collectRendered: <TNode>(iterable: Iterable<TNode>) => TNode[];
-```
-
 ### `flattenText(value)`
 
-Recursively extracts plain text from a `string | TextToken[]` value.
+Companion utility. Recursively extracts plain text from a `string | TextToken[]` value.
 
 ```ts
 const flattenText: (value: string | TextToken[]) => string;
@@ -100,72 +90,96 @@ const flattenText: (value: string | TextToken[]) => string;
 
 ---
 
-## TokenRenderer
+## InterpretRuleset
 
-The renderer you pass to `renderTokens`:
+The ruleset you pass to `interpretTokens`:
 
 ```ts
-interface TokenRenderer<TNode, TEnv = unknown> {
+interface InterpretRuleset<TNode, TEnv = unknown> {
   createText: (text: string) => TNode;
-  render: (token: TextToken, helpers: RenderHelpers<TNode, TEnv>) => RenderResult<TNode>;
-  fallbackRender?: (token: TextToken, helpers: RenderHelpers<TNode, TEnv>) => RenderResult<TNode>;
-  strict?: boolean;
+  interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
+  onUnhandled?: UnhandledStrategy<TNode, TEnv>;
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `createText` | Wrap a plain string into your node type |
-| `render` | Map a DSL token to render result |
-| `fallbackRender` | Called when `render` returns `"defer"` |
-| `strict` | If `true`, throw when no renderer handles a token (default: `false`) |
+| Field         | Description                                                              |
+|---------------|--------------------------------------------------------------------------|
+| `createText`  | Wrap a plain string into your node type                                  |
+| `interpret`   | Map a DSL token to an interpret result                                   |
+| `onUnhandled` | What to do when `interpret` returns `"unhandled"` (default: `"flatten"`) |
 
 ---
 
-## RenderResult
+## InterpretResult
 
-The return type of `render` and `fallbackRender`:
+The return type of `interpret`:
 
 ```ts
-type RenderResult<TNode> =
-  | { type: "tokens"; tokens: Iterable<TNode> }
-  | { type: "text"; text?: string }
-  | { type: "defer" }
-  | { type: "empty" };
+type InterpretResult<TNode> =
+  | { type: "nodes"; nodes: Iterable<TNode> }
+  | { type: "text"; text: string }
+  | { type: "flatten" }
+  | { type: "unhandled" }
+  | { type: "drop" };
 ```
 
-| Result | Meaning |
-|--------|---------|
-| `"tokens"` | Explicit render — yield the provided nodes |
-| `"text"` | Emit text — uses `text` if provided, otherwise `flattenText(token.value)` |
-| `"defer"` | Pass to `fallbackRender`; if none, strict mode throws, otherwise defaults to `"text"` |
-| `"empty"` | Output nothing |
+| Result        | Meaning                                                        |
+|---------------|----------------------------------------------------------------|
+| `"nodes"`     | Yield the provided nodes                                       |
+| `"text"`      | Emit a specific text string (explicit)                         |
+| `"flatten"`   | Flatten `token.value` to plain text and emit                   |
+| `"unhandled"` | This token has no handler — delegate to `onUnhandled` strategy |
+| `"drop"`      | Emit nothing                                                   |
 
 ---
 
-## RenderHelpers
+## UnhandledStrategy
 
-Passed to `render` and `fallbackRender`:
+Controls what happens when `interpret` returns `{ type: "unhandled" }`:
 
 ```ts
-interface RenderHelpers<TNode, TEnv = unknown> {
-  renderChildren: (value: string | TextToken[]) => Iterable<TNode>;
+type UnhandledStrategy<TNode, TEnv = unknown> =
+  | "throw"
+  | "flatten"
+  | "drop"
+  | ((token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => ResolvedResult<TNode>);
+```
+
+| Strategy    | Behavior                                                                      |
+|-------------|-------------------------------------------------------------------------------|
+| `"throw"`   | Throw an error                                                                |
+| `"flatten"` | Flatten to plain text (default)                                               |
+| `"drop"`    | Emit nothing                                                                  |
+| function    | Custom resolution — must return a `ResolvedResult` (no `"unhandled"` allowed) |
+
+`ResolvedResult<TNode>` = `InterpretResult<TNode>` minus `{ type: "unhandled" }`.
+
+---
+
+## InterpretHelpers
+
+Passed to `interpret` and strategy functions:
+
+```ts
+interface InterpretHelpers<TNode, TEnv = unknown> {
+  interpretChildren: (value: string | TextToken[]) => Iterable<TNode>;
   flattenText: (value: string | TextToken[]) => string;
   env: TEnv;
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `renderChildren` | Recursively render child tokens — returns lazy `Iterable<TNode>` |
-| `flattenText` | Extract plain text from a token value |
-| `env` | User-provided environment, passed through from `renderTokens` |
+| Field               | Description                                                         |
+|---------------------|---------------------------------------------------------------------|
+| `interpretChildren` | Recursively interpret child tokens — returns lazy `Iterable<TNode>` |
+| `flattenText`       | Extract plain text from a token value                               |
+| `env`               | User-provided environment, passed through from `interpretTokens`    |
 
 ---
 
 ## Safety
 
-- **Self-recursion detection**: if a renderer feeds a token back into `renderChildren` referencing itself, an error is thrown immediately
+- **Self-recursion detection**: if a handler feeds a token back into `interpretChildren` referencing itself, an error is
+  thrown immediately
 - **Circular value detection**: `flattenText` tracks visited tokens per recursion path (not globally), so shared references are safe but true cycles throw
 
 ---
@@ -174,11 +188,13 @@ interface RenderHelpers<TNode, TEnv = unknown> {
 
 ### 0.1.0
 
-- Initial release
-- Generator-based lazy `renderTokens` traversal
-- `RenderResult` with `"tokens"`, `"text"`, `"defer"`, `"empty"` semantics
-- `flattenText` with per-path circular detection
-- `collectRendered` convenience helper
+- Renamed package to `@yume-dsl/token-walker`
+- `renderTokens` → `interpretTokens`, `TokenRenderer` → `InterpretRuleset`
+- `defer` → `unhandled`, `empty` → `drop`
+- Split `{ type: "text"; text?: string }` into `{ type: "text"; text: string }` + `{ type: "flatten" }`
+- Replaced `strict` + `fallbackRender` with `onUnhandled` strategy enum
+- Strategy function return type narrowed to `ResolvedResult` (cannot return `"unhandled"`)
+- Removed `collectRendered`
 
 ---
 

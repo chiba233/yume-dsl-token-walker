@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createSimpleInlineHandlers, parseRichText, type TextToken } from "yume-dsl-rich-text";
-import { collectRendered, renderTokens, type TokenRenderer } from "../src/index.ts";
+import { type InterpretRuleset, interpretTokens } from "../src/index.ts";
 
 interface TestCase {
   name: string;
@@ -13,15 +13,15 @@ const handlers = {
 
 const parse = (text: string) => parseRichText(text, { handlers });
 
-const htmlRenderer: TokenRenderer<string, { tone?: string }> = {
+const htmlRuleset: InterpretRuleset<string, { tone?: string }> = {
   createText: (text) => text,
-  render: (token, helpers) => {
+  interpret: (token, helpers) => {
     if (token.type === "bold") {
       return {
-        type: "tokens",
-        tokens: [
+        type: "nodes",
+        nodes: [
           `<strong data-tone="${helpers.env.tone ?? "none"}">`,
-          ...helpers.renderChildren(token.value),
+          ...helpers.interpretChildren(token.value),
           "</strong>",
         ],
       };
@@ -29,34 +29,34 @@ const htmlRenderer: TokenRenderer<string, { tone?: string }> = {
 
     if (token.type === "italic") {
       return {
-        type: "tokens",
-        tokens: ["<em>", ...helpers.renderChildren(token.value), "</em>"],
+        type: "nodes",
+        nodes: ["<em>", ...helpers.interpretChildren(token.value), "</em>"],
       };
     }
 
-    return { type: "defer" };
+    return { type: "unhandled" };
   },
 };
 
 const cases: TestCase[] = [
   {
-    name: "renderTokens -> should render nested token tree lazily",
+    name: "interpretTokens -> should interpret nested token tree lazily",
     run: () => {
-      const result = collectRendered(
-        renderTokens(parse("$$bold(a $$italic(b)$$ c)$$"), htmlRenderer, { tone: "soft" }),
+      const result = Array.from(
+        interpretTokens(parse("$$bold(a $$italic(b)$$ c)$$"), htmlRuleset, { tone: "soft" }),
       );
       assert.equal(result.join(""), '<strong data-tone="soft">a <em>b</em> c</strong>');
     },
   },
   {
-    name: "non-strict skip -> should fall back to text",
+    name: "unhandled default -> should fall back to flatten",
     run: () => {
-      const result = collectRendered(
-        renderTokens(
+      const result = Array.from(
+        interpretTokens(
           parse("$$bold(hello)$$"),
           {
             createText: (text) => text,
-            render: () => ({ type: "defer" }),
+            interpret: () => ({ type: "unhandled" }),
           },
           undefined,
         ),
@@ -65,23 +65,57 @@ const cases: TestCase[] = [
     },
   },
   {
-    name: "strict skip -> should throw",
+    name: "onUnhandled throw -> should throw",
     run: () => {
       assert.throws(
         () =>
-          collectRendered(
-            renderTokens(
+          Array.from(
+            interpretTokens(
               parse("$$bold(hello)$$"),
               {
                 createText: (text) => text,
-                render: () => ({ type: "defer" }),
-                strict: true,
+                interpret: () => ({ type: "unhandled" }),
+                onUnhandled: "throw",
               },
               undefined,
             ),
           ),
-        /No renderer defined for DSL token type "bold"/,
+        /No handler defined for DSL token type "bold"/,
       );
+    },
+  },
+  {
+    name: "onUnhandled drop -> should emit nothing",
+    run: () => {
+      const result = Array.from(
+        interpretTokens(
+          parse("$$bold(hello)$$"),
+          {
+            createText: (text) => text,
+            interpret: () => ({ type: "unhandled" }),
+            onUnhandled: "drop",
+          },
+          undefined,
+        ),
+      );
+      assert.equal(result.join(""), "");
+    },
+  },
+  {
+    name: "onUnhandled function -> should use custom strategy",
+    run: () => {
+      const result = Array.from(
+        interpretTokens(
+          parse("$$bold(hello)$$"),
+          {
+            createText: (text) => text,
+            interpret: () => ({ type: "unhandled" }),
+            onUnhandled: (token) => ({ type: "text", text: `[${token.type}]` }),
+          },
+          undefined,
+        ),
+      );
+      assert.equal(result.join(""), "[bold]");
     },
   },
   {
@@ -89,21 +123,21 @@ const cases: TestCase[] = [
     run: () => {
       assert.throws(
         () =>
-          collectRendered(
-            renderTokens(
+          Array.from(
+            interpretTokens(
               parse("$$bold(hello)$$"),
               {
                 createText: (text) => text,
-                render: (token, helpers) => {
-                  if (token.type !== "bold") return { type: "text" };
-                  return { type: "tokens", tokens: helpers.renderChildren([token]) };
+                interpret: (token, helpers) => {
+                  if (token.type !== "bold") return { type: "flatten" };
+                  return { type: "nodes", nodes: helpers.interpretChildren([token]) };
                 },
-                strict: true,
+                onUnhandled: "throw",
               },
               undefined,
             ),
           ),
-        /Recursive DSL token rendering detected/,
+        /Recursive DSL token detected/,
       );
     },
   },
@@ -116,12 +150,12 @@ const cases: TestCase[] = [
 
       assert.throws(
         () =>
-          collectRendered(
-            renderTokens(
+          Array.from(
+            interpretTokens(
               [loop],
               {
                 createText: (text) => text,
-                render: () => ({ type: "text" }),
+                interpret: () => ({ type: "flatten" }),
               },
               undefined,
             ),
@@ -147,7 +181,7 @@ for (const testCase of cases) {
   }
 }
 
-console.log(`PASS ${passed} 个 render core case`);
+console.log(`PASS ${passed} 个 interpret core case`);
 if (failed > 0) {
   console.error(`FAIL ${failed} 个 case`);
   process.exit(1);

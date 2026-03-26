@@ -1,4 +1,4 @@
-name: Publish @yume-dsl/render-core
+name: Publish @yume-dsl/token-walker
 
 on:
   workflow_dispatch:
@@ -102,7 +102,7 @@ jobs:
           cp package.json package.json.bak
           node -e "
             const pkg = require('./package.json');
-            pkg.name = '@chiba233/yume-dsl-render-core';
+            pkg.name = '@chiba233/yume-dsl-token-walker';
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           npm publish --access public
@@ -116,7 +116,7 @@ jobs:
           cp package.json package.json.bak
           node -e "
             const pkg = require('./package.json');
-            pkg.name = '@chiba233/yume-dsl-render-core';
+            pkg.name = '@chiba233/yume-dsl-token-walker';
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           npm publish --access public --dry-run
@@ -131,7 +131,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
           git diff --cached --quiet && echo "No version change, skipping commit" && exit 0
-          git commit -m "release: @yume-dsl/render-core v${PKG_VERSION}"
-          git tag "render-core-v${PKG_VERSION}"
+          git commit -m "release: @yume-dsl/token-walker v${PKG_VERSION}"
+          git tag "token-walker-v${PKG_VERSION}"
           git push
           git push --tags

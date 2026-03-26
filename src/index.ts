@@ -1,23 +1,41 @@
 import type { TextToken } from "yume-dsl-rich-text";
 
-export type RenderResult<TNode> =
-  | { type: "tokens"; tokens: Iterable<TNode> }
-  | { type: "text"; text?: string }
-  | { type: "defer" }
-  | { type: "empty" };
+// ── Result ──
 
-export interface RenderHelpers<TNode, TEnv = unknown> {
-  renderChildren: (value: string | TextToken[]) => Iterable<TNode>;
+export type InterpretResult<TNode> =
+  | { type: "nodes"; nodes: Iterable<TNode> }
+  | { type: "text"; text: string }
+  | { type: "flatten" }
+  | { type: "unhandled" }
+  | { type: "drop" };
+
+export type ResolvedResult<TNode> = Exclude<InterpretResult<TNode>, { type: "unhandled" }>;
+
+// ── Helpers ──
+
+export interface InterpretHelpers<TNode, TEnv = unknown> {
+  interpretChildren: (value: string | TextToken[]) => Iterable<TNode>;
   flattenText: (value: string | TextToken[]) => string;
   env: TEnv;
 }
 
-export interface TokenRenderer<TNode, TEnv = unknown> {
+// ── Strategy ──
+
+export type UnhandledStrategy<TNode, TEnv = unknown> =
+  | "throw"
+  | "flatten"
+  | "drop"
+  | ((token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => ResolvedResult<TNode>);
+
+// ── Ruleset ──
+
+export interface InterpretRuleset<TNode, TEnv = unknown> {
   createText: (text: string) => TNode;
-  render: (token: TextToken, helpers: RenderHelpers<TNode, TEnv>) => RenderResult<TNode>;
-  fallbackRender?: (token: TextToken, helpers: RenderHelpers<TNode, TEnv>) => RenderResult<TNode>;
-  strict?: boolean;
+  interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
+  onUnhandled?: UnhandledStrategy<TNode, TEnv>;
 }
+
+// ── Companion utility: flattenText ──
 
 const flattenTokenText = (
   value: string | TextToken[],
@@ -54,59 +72,63 @@ const flattenTokenText = (
 export const flattenText = (value: string | TextToken[]): string =>
   flattenTokenText(value, new WeakSet<object>(), new WeakSet<object>());
 
-type ResolvedRenderResult<TNode> = Exclude<RenderResult<TNode>, { type: "defer" }>;
+// ── Internal: resolve & iterate ──
 
-const iterateRendered = function* <TNode>(
-  result: ResolvedRenderResult<TNode>,
-  createText: (text: string) => TNode,
+const iterateResolved = function* <TNode, TEnv>(
+  result: ResolvedResult<TNode>,
+  ruleset: InterpretRuleset<TNode, TEnv>,
+  helpers: InterpretHelpers<TNode, TEnv>,
   token: TextToken,
 ): Generator<TNode> {
   switch (result.type) {
-    case "tokens":
-      yield* result.tokens;
+    case "nodes":
+      yield* result.nodes;
       return;
-    case "text": {
-      const text = result.text ?? flattenText(token.value);
-      yield createText(text);
+    case "text":
+      yield ruleset.createText(result.text);
       return;
-    }
-    case "empty":
+    case "flatten":
+      yield ruleset.createText(helpers.flattenText(token.value));
       return;
-    default: {
-      const _exhaustive: never = result;
-      throw new Error(
-        `Unexpected render result type: ${(_exhaustive as ResolvedRenderResult<TNode>).type}`,
-      );
-    }
+    case "drop":
+      return;
+    default:
+      throw new Error("Unexpected interpret result type");
   }
 };
 
-const resolveRenderResult = <TNode, TEnv>(
+const resolveResult = <TNode, TEnv>(
   token: TextToken,
-  renderer: TokenRenderer<TNode, TEnv>,
-  helpers: RenderHelpers<TNode, TEnv>,
-): ResolvedRenderResult<TNode> => {
-  const result = renderer.render(token, helpers);
-  if (result.type !== "defer") return result;
+  ruleset: InterpretRuleset<TNode, TEnv>,
+  helpers: InterpretHelpers<TNode, TEnv>,
+): ResolvedResult<TNode> => {
+  const result = ruleset.interpret(token, helpers);
+  if (result.type !== "unhandled") return result;
 
-  if (renderer.fallbackRender) {
-    const fallbackResult = renderer.fallbackRender(token, helpers);
-    if (fallbackResult.type !== "defer") {
-      return fallbackResult;
-    }
+  const strategy = ruleset.onUnhandled ?? "flatten";
+
+  if (typeof strategy === "function") {
+    return strategy(token, helpers);
   }
 
-  if (renderer.strict ?? false) {
-    throw new Error(`No renderer defined for DSL token type "${token.type}"`);
+  switch (strategy) {
+    case "throw":
+      throw new Error(`No handler defined for DSL token type "${token.type}"`);
+    case "flatten":
+      return { type: "flatten" };
+    case "drop":
+      return { type: "drop" };
+    default:
+      throw new Error("Unknown unhandled strategy");
   }
-
-  return { type: "text" };
 };
 
-const renderTokenIterable = function* <TNode, TEnv>(
+// ── Internal: traversal ──
+
+const interpretIterable = function* <TNode, TEnv>(
   tokens: TextToken[],
-  renderer: TokenRenderer<TNode, TEnv>,
-  helpers: RenderHelpers<TNode, TEnv>,
+  ruleset: InterpretRuleset<TNode, TEnv>,
+  helpers: InterpretHelpers<TNode, TEnv>,
   activeTokens: WeakSet<object>,
 ): Generator<TNode> {
   for (const token of tokens) {
@@ -114,47 +136,46 @@ const renderTokenIterable = function* <TNode, TEnv>(
       if (typeof token.value !== "string") {
         throw new Error("DSL text token value must be a string");
       }
-      yield renderer.createText(token.value);
+      yield ruleset.createText(token.value);
       continue;
     }
 
     if (activeTokens.has(token)) {
-      throw new Error(`Recursive DSL token rendering detected for type "${token.type}"`);
+      throw new Error(`Recursive DSL token detected for type "${token.type}"`);
     }
 
     activeTokens.add(token);
     try {
-      const result = resolveRenderResult(token, renderer, helpers);
-      yield* iterateRendered(result, renderer.createText, token);
+      const result = resolveResult(token, ruleset, helpers);
+      yield* iterateResolved(result, ruleset, helpers, token);
     } finally {
       activeTokens.delete(token);
     }
   }
 };
 
-export const renderTokens = function* <TNode, TEnv = unknown>(
+// ── Public API ──
+
+export const interpretTokens = function* <TNode, TEnv = unknown>(
   tokens: TextToken[],
-  renderer: TokenRenderer<TNode, TEnv>,
+  ruleset: InterpretRuleset<TNode, TEnv>,
   env: TEnv,
 ): Generator<TNode> {
   const activeTokens = new WeakSet<object>();
 
-  const renderChildren = function* (value: string | TextToken[]): Generator<TNode> {
+  const interpretChildren = function* (value: string | TextToken[]): Generator<TNode> {
     if (typeof value === "string") {
-      yield renderer.createText(value);
+      yield ruleset.createText(value);
       return;
     }
-
-    yield* renderTokenIterable(value, renderer, helpers, activeTokens);
+    yield* interpretIterable(value, ruleset, helpers, activeTokens);
   };
 
-  const helpers: RenderHelpers<TNode, TEnv> = {
-    renderChildren,
+  const helpers: InterpretHelpers<TNode, TEnv> = {
+    interpretChildren,
     flattenText,
     env,
   };
 
-  yield* renderTokenIterable(tokens, renderer, helpers, activeTokens);
+  yield* interpretIterable(tokens, ruleset, helpers, activeTokens);
 };
-
-export const collectRendered = <TNode>(iterable: Iterable<TNode>): TNode[] => Array.from(iterable);
