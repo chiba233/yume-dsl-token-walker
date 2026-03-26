@@ -29,12 +29,17 @@
   - [在 handler 内使用 flattenText](#在-handler-内使用-flattentext)
   - [返回结构化节点](#返回结构化节点而不只是字符串)
   - [完全丢弃某类 token](#完全丢弃某类-token)
+- [推荐结构](#推荐结构)
+- [完整示例](#完整示例)
 - [API — 核心](#api--核心)
   - [interpretTokens](#interprettokenstokens-ruleset-env)
   - [flattenText](#flattentextvalue)
 - [API — 辅助工具](#api--辅助工具)
   - [createRuleset](#createrulesetruleset)
   - [fromHandlerMap](#fromhandlermaphandlers)
+  - [dropToken](#droptoken)
+  - [unwrapChildren](#unwrapchildren)
+  - [wrapHandlers](#wraphandlershandlers-wrap)
   - [debugUnhandled](#debugunhandledformat)
   - [collectNodes](#collectnodesiterable)
 - [类型定义](#类型定义)
@@ -105,19 +110,24 @@ const html = Array.from(
 
 ## 导出一览
 
-| 导出                  | 类别 | 说明                                             |
-|---------------------|----|------------------------------------------------|
-| `interpretTokens`   | 函数 | 遍历 token 树并 yield 输出节点（核心）                     |
-| `flattenText`       | 函数 | 从 token value 中提取纯文本（独立工具，不经过 `onError`）       |
-| `createRuleset`     | 辅助 | `InterpretRuleset` 的恒等函数，提供类型推断                |
-| `fromHandlerMap`    | 辅助 | 从 `Record<type, handler>` 映射构建 `interpret` 函数  |
-| `debugUnhandled`    | 辅助 | 创建将未处理 token 渲染为可见占位符的 `onUnhandled` 函数        |
-| `collectNodes`      | 辅助 | `Array.from` 语法糖 — 将惰性 `Iterable<TNode>` 收集为数组 |
-| `InterpretRuleset`  | 类型 | 传给 `interpretTokens` 的规则集接口                    |
-| `InterpretResult`   | 类型 | `interpret` 的返回类型（5 种变体）                       |
-| `ResolvedResult`    | 类型 | `InterpretResult` 去掉 `"unhandled"`             |
-| `InterpretHelpers`  | 类型 | 传给 `interpret` 和策略函数的辅助对象                      |
-| `UnhandledStrategy` | 类型 | `"throw" \| "flatten" \| "drop" \| function`   |
+| 导出                  | 类别 | 说明                                                          |
+|---------------------|----|-------------------------------------------------------------|
+| `interpretTokens`   | 函数 | 遍历 token 树并 yield 输出节点（核心）                                  |
+| `flattenText`       | 函数 | 从 token value 中提取纯文本（独立工具，不经过 `onError`）                    |
+| `createRuleset`     | 辅助 | `InterpretRuleset` 的恒等函数，提供类型推断                             |
+| `fromHandlerMap`    | 辅助 | 从 `Record<type, handler>` 映射构建 `interpret` 函数               |
+| `dropToken`         | 辅助 | 直接丢弃 token 的 handler — 不产生任何输出                              |
+| `unwrapChildren`    | 辅助 | 直接透传子节点的 handler，不加任何包装                                     |
+| `wrapHandlers`      | 辅助 | 对 handler 映射表中的每个 handler 施加统一的包装变换                         |
+| `debugUnhandled`    | 辅助 | 创建将未处理 token 渲染为可见占位符的 `onUnhandled` 函数                     |
+| `collectNodes`      | 辅助 | `Array.from` 语法糖 — 将惰性 `Iterable<TNode>` 收集为数组              |
+| `InterpretRuleset`  | 类型 | 传给 `interpretTokens` 的规则集接口                                 |
+| `InterpretResult`   | 类型 | `interpret` 的返回类型（5 种变体）                                    |
+| `ResolvedResult`    | 类型 | `InterpretResult` 去掉 `"unhandled"`                          |
+| `InterpretHelpers`  | 类型 | 传给 `interpret` 和策略函数的辅助对象                                   |
+| `UnhandledStrategy` | 类型 | `"throw" \| "flatten" \| "drop" \| function`                |
+| `TokenHandler`      | 类型 | 单个 handler 函数签名的简写                                          |
+| `TextResult`        | 类型 | `{ type: "text"; text: string }` — `debugUnhandled` 回调的返回类型 |
 
 ---
 
@@ -324,6 +334,184 @@ const result = Array.from(
 
 ---
 
+## 推荐结构
+
+### 小项目 — 内联 interpret
+
+全部写在一个文件里，不需要任何 helper。
+
+```ts
+const result = collectNodes(
+        interpretTokens(tokens, {
+          createText: (t) => t,
+          interpret: (token, helpers) => {
+            if (token.type === "bold")
+              return { type: "nodes", nodes: ["<b>", ...helpers.interpretChildren(token.value), "</b>"] };
+            return { type: "unhandled" };
+          },
+        }, {}),
+);
+```
+
+### 中项目 — fromHandlerMap + handlers 文件
+
+把 handler 定义拆到单独文件，用 `createRuleset` 获得类型安全。
+
+```
+src/
+  dsl/
+    handlers.ts    ← handler 映射表
+    ruleset.ts     ← createRuleset + fromHandlerMap
+    interpret.ts   ← 调用 interpretTokens
+```
+
+```ts
+// handlers.ts
+import type { InterpretHelpers, ResolvedResult } from "yume-dsl-token-walker";
+
+type Handler = (token: TextToken, helpers: InterpretHelpers<string, Env>) => ResolvedResult<string>;
+
+// 共享包装逻辑 — 只是一个普通函数，不是库导出
+const wrapTag = (tag: string, token: TextToken, helpers: InterpretHelpers<string, Env>): ResolvedResult<string> => ({
+  type: "nodes",
+  nodes: [`<${tag}>`, ...helpers.interpretChildren(token.value), `</${tag}>`],
+});
+
+export const handlers: Record<string, Handler> = {
+  bold: (token, h) => wrapTag("strong", token, h),
+  italic: (token, h) => wrapTag("em", token, h),
+  code: (token) => ({ type: "text", text: `<code>${token.value}</code>` }),
+  comment: () => ({ type: "drop" }),
+};
+```
+
+```ts
+// ruleset.ts
+import { createRuleset, fromHandlerMap, debugUnhandled } from "yume-dsl-token-walker";
+import { handlers } from "./handlers";
+
+export const ruleset = createRuleset({
+  createText: (text) => text,
+  interpret: fromHandlerMap(handlers),
+  onUnhandled: process.env.NODE_ENV === "production" ? "flatten" : debugUnhandled(),
+});
+```
+
+### 大项目 — parse / interpret / render 三层分离
+
+```
+src/
+  dsl/
+    parser.ts      ← yume-dsl-rich-text 配置
+    handlers/
+      inline.ts    ← bold, italic, link, ...
+      block.ts     ← info, warning, spoiler, ...
+      index.ts     ← 合并后的 handler map
+    ruleset.ts     ← createRuleset, env 类型
+    interpret.ts   ← interpretTokens 封装
+  render/
+    toHtml.ts      ← TNode → HTML 字符串
+    toPlainText.ts ← flattenText 做搜索 / 预览
+```
+
+核心原则：
+
+- **`env` 只放运行时上下文** — 主题、语言、权限、功能开关。不要往 `env` 里塞业务状态。
+- **Handler 是纯映射** — token 进，result 出。副作用属于 render 层。
+- **一种输出格式一个 ruleset** — 如果同时需要 HTML 和纯文本，创建两个 ruleset，而不是一个里面做分支。
+
+---
+
+## 完整示例
+
+完整流水线：解析 DSL 文本 → 解释为 HTML AST → 渲染为字符串。包含多种 token 类型、env 驱动的主题切换，以及双输出（富文本 +
+纯文本搜索索引）。
+
+```ts
+// ── types.ts ──
+type HtmlNode =
+        | { kind: "text"; value: string }
+        | { kind: "element"; tag: string; attrs?: Record<string, string>; children: HtmlNode[] };
+
+interface Env {
+  locale: "en" | "zh";
+  theme: "light" | "dark";
+}
+
+// ── parser.ts ──
+import { createParser, createSimpleInlineHandlers } from "yume-dsl-rich-text";
+
+const parser = createParser({
+  handlers: createSimpleInlineHandlers(["bold", "italic", "link", "color"]),
+});
+
+// ── handlers.ts ──
+import type { TextToken } from "yume-dsl-rich-text";
+import type { InterpretHelpers, ResolvedResult } from "yume-dsl-token-walker";
+
+type H = InterpretHelpers<HtmlNode, Env>;
+
+const el = (tag: string, token: TextToken, h: H, attrs?: Record<string, string>): ResolvedResult<HtmlNode> => ({
+  type: "nodes",
+  nodes: [{ kind: "element", tag, attrs, children: Array.from(h.interpretChildren(token.value)) }],
+});
+
+const handlers: Record<string, (token: TextToken, h: H) => ResolvedResult<HtmlNode>> = {
+  bold: (token, h) => el("strong", token, h),
+  italic: (token, h) => el("em", token, h),
+  link: (token, h) => el("a", token, h, { href: token.props?.href ?? "#" }),
+  color: (token, h) => el("span", token, h, {
+    style: `color: ${h.env.theme === "dark" ? "var(--c-light)" : token.props?.value ?? "inherit"}`,
+  }),
+};
+
+// ── ruleset.ts ──
+import { createRuleset, fromHandlerMap } from "yume-dsl-token-walker";
+
+const ruleset = createRuleset<HtmlNode, Env>({
+  createText: (text) => ({ kind: "text", value: text }),
+  interpret: fromHandlerMap(handlers),
+  onUnhandled: "flatten",
+  onError: ({ error, phase, token }) => {
+    console.warn(`[dsl:${phase}] ${error.message}`, token?.type);
+  },
+});
+
+// ── render.ts ──
+const renderNode = (node: HtmlNode): string => {
+  if (node.kind === "text") return node.value;
+  const attrs = node.attrs
+          ? " " + Object.entries(node.attrs).map(([k, v]) => `${k}="${v}"`).join(" ")
+          : "";
+  return `<${node.tag}${attrs}>${node.children.map(renderNode).join("")}</${node.tag}>`;
+};
+
+// ── usage ──
+import { interpretTokens, collectNodes, flattenText } from "yume-dsl-token-walker";
+
+const input = "Hello $$bold($$italic(world)$$)$$ — $$link(click here){href=https://example.com}$$";
+const tokens = parser.parse(input);
+const env: Env = { locale: "zh", theme: "dark" };
+
+// 富文本输出
+const nodes = collectNodes(interpretTokens(tokens, ruleset, env));
+const html = nodes.map(renderNode).join("");
+
+// 纯文本搜索索引 — 独立调用，不需要 ruleset
+const plain = flattenText(tokens);
+```
+
+这个例子展示了推荐的分层：
+
+| 层          | 职责                   | 依赖                   |
+|------------|----------------------|----------------------|
+| `parser`   | 文本 → `TextToken[]`   | `yume-dsl-rich-text` |
+| `handlers` | Token → interpret 结果 | token-walker 类型      |
+| `ruleset`  | 组合 handler + 配置      | `handlers` + helpers |
+| `render`   | `TNode[]` → 最终输出     | 你自己的节点类型             |
+
+---
+
 ## API — 核心
 
 ### `interpretTokens(tokens, ruleset, env)`
@@ -395,6 +583,68 @@ const ruleset = createRuleset({
 ```
 
 未匹配的 token 自动返回 `{ type: "unhandled" }`。
+
+### `dropToken`
+
+现成的 handler，直接丢弃 token，不产生任何输出。等价于 `() => ({ type: "drop" })`，省去样板代码：
+
+```ts
+import { fromHandlerMap, dropToken } from "yume-dsl-token-walker";
+
+const interpret = fromHandlerMap({
+  bold: (token, h) => ({ type: "nodes", nodes: ["<b>", ...h.interpretChildren(token.value), "</b>"] }),
+  comment: dropToken,
+  metadata: dropToken,
+});
+```
+
+### `unwrapChildren`
+
+现成的 handler，解释子节点并直接透传，不加任何包装。适合结构性 token（本身不产生可见容器）：
+
+```ts
+import { fromHandlerMap, unwrapChildren } from "yume-dsl-token-walker";
+
+const interpret = fromHandlerMap({
+  bold: (token, h) => ({ type: "nodes", nodes: ["<b>", ...h.interpretChildren(token.value), "</b>"] }),
+  wrapper: unwrapChildren, // 只输出子节点，不加包装标签
+  transparent: unwrapChildren,
+});
+```
+
+### `wrapHandlers(handlers, wrap)`
+
+对 handler 映射表中的每个 handler 施加统一的包装变换。`wrap` 回调接收 handler 的结果、token 和 helpers——返回新的
+`ResolvedResult`。
+
+`wrapHandlers` 是前处理 handler map，`fromHandlerMap` 是最终收口：
+
+```
+wrapHandlers(raw, wrap)  ──▶  handlers  ──▶  fromHandlerMap(handlers)  ──▶  interpret
+```
+
+```ts
+import { fromHandlerMap, wrapHandlers, type TokenHandler } from "yume-dsl-token-walker";
+
+const rawBlockHandlers: Record<string, TokenHandler<string>> = {
+  info: (token, h) => ({ type: "nodes", nodes: ["[INFO] ", ...h.interpretChildren(token.value)] }),
+  warning: (token, h) => ({ type: "nodes", nodes: ["[WARN] ", ...h.interpretChildren(token.value)] }),
+};
+
+// 所有 block handler 统一包一层 <div>
+const blockHandlers = wrapHandlers(rawBlockHandlers, (result, token) => {
+  if (result.type !== "nodes") return result;
+  return {
+    type: "nodes",
+    nodes: [`<div class="block-${token.type}">`, ...result.nodes, "</div>"],
+  };
+});
+
+const interpret = fromHandlerMap({
+  ...inlineHandlers,
+  ...blockHandlers,
+});
+```
 
 ### `debugUnhandled(format?)`
 
@@ -586,8 +836,10 @@ try {
 
 ### 0.1.1
 
-- 新增辅助工具：`createRuleset`、`fromHandlerMap`、`debugUnhandled`、`collectNodes`
-- `debugUnhandled` 泛型化（`<TNode>`）— 适用于任意节点类型，不再固定为 `string`
+- 新增辅助工具：`createRuleset`、`fromHandlerMap`、`dropToken`、`unwrapChildren`、`wrapHandlers`、`debugUnhandled`、
+  `collectNodes`
+- 新增 `TokenHandler` 类型 — handler 函数签名的简写
+- `debugUnhandled` 返回窄类型 `{ type: "text"; text: string }` — 无需假泛型即可兼容任意 `TNode`
 - `fromHandlerMap` 的 handler 返回类型收紧为 `ResolvedResult` — handler 内不应返回 `"unhandled"`
 - 源码拆分为 `types.ts`、`interpret.ts`、`helpers.ts`（`index.ts` 统一 re-export）
 - README：添加目录、导出一览表，按类别分组

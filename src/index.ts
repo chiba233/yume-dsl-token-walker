@@ -7,4 +7,13 @@ export type {
 } from "./types.ts";
 
 export { flattenText, interpretTokens } from "./interpret.ts";
-export { createRuleset, debugUnhandled, collectNodes, fromHandlerMap } from "./helpers.ts";
+export type { TokenHandler, TextResult } from "./helpers.ts";
+export {
+  createRuleset,
+  debugUnhandled,
+  collectNodes,
+  dropToken,
+  unwrapChildren,
+  fromHandlerMap,
+  wrapHandlers,
+} from "./helpers.ts";
