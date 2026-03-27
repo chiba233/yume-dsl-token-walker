@@ -2,6 +2,10 @@ import type { TextToken } from "yume-dsl-rich-text";
 
 // ── Result ──
 
+export interface ParserLike {
+  parse: (input: string) => TextToken[];
+}
+
 export type InterpretResult<TNode> =
   | { type: "nodes"; nodes: Iterable<TNode> }
   | { type: "text"; text: string }

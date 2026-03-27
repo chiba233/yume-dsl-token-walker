@@ -19,6 +19,10 @@
 
 你提供规则，它遍历树、yield 输出节点，然后闪开。
 
+它刻意只消费 `TextToken[]`，不处理 structural parse node。
+如果你需要带语法感知的结构分析或高亮，请使用 `yume-dsl-rich-text` 的 `parseStructural`，或者
+[`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight)。
+
 ---
 
 ## 目录
@@ -36,6 +40,7 @@
 - [推荐结构](#推荐结构)
 - [完整示例](#完整示例)
 - [API — 核心](#api--核心)
+    - [interpretText](#interprettextinput-parser-ruleset-env)
     - [interpretTokens](#interprettokenstokens-ruleset-env)
     - [flattenText](#flattentextvalue)
 - [API — 辅助工具](#api--辅助工具)
@@ -74,6 +79,11 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] ──▶ yume-d
 | **`yume-dsl-token-walker`**                                                        | 解释器 — token 树到输出节点（本包）        |
 | [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight) | 语法高亮 — 彩色 token 或 TextMate 语法 |
 
+边界说明：
+
+- `yume-dsl-token-walker` 消费 `parseRichText(...)` 或 `createParser(...).parse(...)` 的输出。
+- `parseStructural(...)` 和 `createParser(...).structural(...)` 属于语法分析 / 高亮路径，不属于 walker 输入。
+
 ---
 
 ## 安装
@@ -91,14 +101,15 @@ pnpm add yume-dsl-token-walker
 ## 快速上手
 
 ```ts
-import {parseRichText, createSimpleInlineHandlers} from "yume-dsl-rich-text";
-import {interpretTokens} from "yume-dsl-token-walker";
+import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {interpretText} from "yume-dsl-token-walker";
 
-const handlers = createSimpleInlineHandlers(["bold"]);
-const tokens = parseRichText("Hello $$bold(world)$$", {handlers});
+const parser = createParser({
+    handlers: createSimpleInlineHandlers(["bold"]),
+});
 
 const html = Array.from(
-    interpretTokens(tokens, {
+    interpretText("Hello $$bold(world)$$", parser, {
         createText: (text) => text,
         interpret: (token, helpers) => {
             if (token.type === "bold")
@@ -111,12 +122,16 @@ const html = Array.from(
 // → "Hello <strong>world</strong>"
 ```
 
+如果你手里已经有 `TextToken[]`，就直接用 `interpretTokens(...)`。
+`parser.structural(...)` 属于另一层能力，不是本包输入。
+
 ---
 
 ## 导出一览
 
 | 导出                  | 类别 | 说明                                                          |
 |---------------------|----|-------------------------------------------------------------|
+| `interpretText`     | 函数 | 推荐的便利入口：先用 parser 解析 DSL 文本，再 yield 输出节点                     |
 | `interpretTokens`   | 函数 | 遍历 token 树并 yield 输出节点（核心）                                  |
 | `flattenText`       | 函数 | 从 token value 中提取纯文本（独立工具，不经过 `onError`）                    |
 | `createRuleset`     | 辅助 | `InterpretRuleset` 的恒等函数，提供类型推断                             |
@@ -515,9 +530,30 @@ const plain = flattenText(tokens);
 | `ruleset`  | 组合 handler + 配置      | `handlers` + helpers |
 | `render`   | `TNode[]` → 最终输出     | 你自己的节点类型             |
 
+这个流水线里刻意不包含 `parseStructural`。
+只有在你需要结构化语法信息时才使用它，而不是在把 `TextToken[]` 解释成输出节点时使用。
+
 ---
 
 ## API — 核心
+
+### `interpretText(input, parser, ruleset, env)`
+
+一个很薄的便利封装，本质是 `parser.parse(input)` + `interpretTokens(...)`。
+
+```ts
+function* interpretText<TNode, TEnv>(
+    input: string,
+    parser: ParserLike,
+    ruleset: InterpretRuleset<TNode, TEnv>,
+    env: TEnv,
+): Generator<TNode>;
+```
+
+适合派生包或应用层减少一行样板代码，但不会改变包边界。
+它内部仍然只消费 `TextToken[]`，不会使用 `parser.structural(...)`。
+
+`ParserLike` 指任何带有 `parse(input: string): TextToken[]` 的对象。
 
 ### `interpretTokens(tokens, ruleset, env)`
 
@@ -838,6 +874,14 @@ try {
 ---
 
 ## 更新日志
+
+### 0.1.3
+
+- 新增 `interpretText(input, parser, ruleset, env)`，作为派生包场景下推荐的便利入口
+- 更新文档，在快速上手和 API 文档中提升 `interpretText` 的入口层级
+- 明确包边界：`token-walker` 消费 `TextToken[]`，结构化解析属于 `yume-dsl-rich-text` /
+  `yume-dsl-shiki-highlight`
+- 将 `yume-dsl-rich-text` 依赖更新到 `^0.1.20`
 
 ### 0.1.2
 

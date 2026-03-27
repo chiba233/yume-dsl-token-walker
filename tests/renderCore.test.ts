@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createSimpleInlineHandlers, parseRichText, type TextToken } from "yume-dsl-rich-text";
-import { type InterpretRuleset, interpretTokens } from "../src/index.ts";
+import { createParser, createSimpleInlineHandlers, parseRichText, type TextToken } from "yume-dsl-rich-text";
+import { type InterpretRuleset, interpretText, interpretTokens } from "../src/index.ts";
 
 interface TestCase {
   name: string;
@@ -12,6 +12,7 @@ const handlers = {
 };
 
 const parse = (text: string) => parseRichText(text, { handlers });
+const parser = createParser({ handlers });
 
 const htmlRuleset: InterpretRuleset<string, { tone?: string }> = {
   createText: (text) => text,
@@ -44,6 +45,15 @@ const cases: TestCase[] = [
     run: () => {
       const result = Array.from(
         interpretTokens(parse("$$bold(a $$italic(b)$$ c)$$"), htmlRuleset, { tone: "soft" }),
+      );
+      assert.equal(result.join(""), '<strong data-tone="soft">a <em>b</em> c</strong>');
+    },
+  },
+  {
+    name: "interpretText -> should parse then interpret with the provided parser",
+    run: () => {
+      const result = Array.from(
+        interpretText("$$bold(a $$italic(b)$$ c)$$", parser, htmlRuleset, { tone: "soft" }),
       );
       assert.equal(result.join(""), '<strong data-tone="soft">a <em>b</em> c</strong>');
     },

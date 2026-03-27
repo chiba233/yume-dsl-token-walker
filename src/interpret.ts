@@ -1,10 +1,11 @@
-import type { TextToken } from "yume-dsl-rich-text";
 import type {
   InterpretHelpers,
   InterpretResult,
   InterpretRuleset,
+  ParserLike,
   ResolvedResult,
 } from "./types.ts";
+import type { TextToken } from "yume-dsl-rich-text";
 
 // ── Companion utility: flattenText ──
 
@@ -199,4 +200,13 @@ export const interpretTokens = function* <TNode, TEnv = unknown>(
   };
 
   yield* interpretIterable(tokens, ruleset, helpers, activeTokens);
+};
+
+export const interpretText = function* <TNode, TEnv = unknown>(
+  input: string,
+  parser: ParserLike,
+  ruleset: InterpretRuleset<TNode, TEnv>,
+  env: TEnv,
+): Generator<TNode> {
+  yield* interpretTokens(parser.parse(input), ruleset, env);
 };

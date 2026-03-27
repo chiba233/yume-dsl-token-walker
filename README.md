@@ -20,6 +20,10 @@ output — the walking is an implementation detail.
 
 You provide rules. It walks the tree, yields output nodes, and gets out of the way.
 
+It intentionally consumes `TextToken[]`, not structural parse nodes.
+If you need syntax-aware analysis or highlighting, use `parseStructural` from `yume-dsl-rich-text` or
+[`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight).
+
 ---
 
 ## Table of Contents
@@ -37,6 +41,7 @@ You provide rules. It walks the tree, yields output nodes, and gets out of the w
 - [Recommended Structure](#recommended-structure)
 - [Real-world Example](#real-world-example)
 - [API — Core](#api--core)
+    - [interpretText](#interprettextinput-parser-ruleset-env)
     - [interpretTokens](#interprettokenstokens-ruleset-env)
     - [flattenText](#flattentextvalue)
 - [API — Helpers](#api--helpers)
@@ -75,6 +80,11 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] ──▶ yume-d
 | **`yume-dsl-token-walker`**                                                        | Interpreter — token tree to output nodes (this package) |
 | [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight) | Syntax highlighting — tokens or TextMate grammar        |
 
+Boundary notes:
+
+- `yume-dsl-token-walker` consumes `parseRichText(...)` or `createParser(...).parse(...)` output.
+- `parseStructural(...)` and `createParser(...).structural(...)` belong to syntax analysis / highlighting, not walker input.
+
 ---
 
 ## Install
@@ -92,14 +102,15 @@ pnpm add yume-dsl-token-walker
 ## Quick Start
 
 ```ts
-import {parseRichText, createSimpleInlineHandlers} from "yume-dsl-rich-text";
-import {interpretTokens} from "yume-dsl-token-walker";
+import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {interpretText} from "yume-dsl-token-walker";
 
-const handlers = createSimpleInlineHandlers(["bold"]);
-const tokens = parseRichText("Hello $$bold(world)$$", {handlers});
+const parser = createParser({
+    handlers: createSimpleInlineHandlers(["bold"]),
+});
 
 const html = Array.from(
-    interpretTokens(tokens, {
+    interpretText("Hello $$bold(world)$$", parser, {
         createText: (text) => text,
         interpret: (token, helpers) => {
             if (token.type === "bold")
@@ -112,6 +123,9 @@ const html = Array.from(
 // → "Hello <strong>world</strong>"
 ```
 
+For direct `TextToken[]` input, use `interpretTokens(...)`.
+`parser.structural(...)` is a different layer and is not consumed by this package.
+
 ---
 
 ## Exports
@@ -120,6 +134,7 @@ All public exports at a glance:
 
 | Export              | Kind     | Description                                                                       |
 |---------------------|----------|-----------------------------------------------------------------------------------|
+| `interpretText`     | function | Recommended convenience API: parse DSL text with a parser, then yield output nodes |
 | `interpretTokens`   | function | Walk a token tree and yield output nodes (core)                                   |
 | `flattenText`       | function | Extract plain text from a token value (standalone, does not go through `onError`) |
 | `createRuleset`     | helper   | Identity function for `InterpretRuleset` type inference                           |
@@ -519,9 +534,30 @@ This shows the recommended separation:
 | `ruleset`  | Compose handlers + config | `handlers` + helpers    |
 | `render`   | `TNode[]` → final output  | your own node type      |
 
+`parseStructural` is intentionally absent from this pipeline.
+Use it only when you need structural syntax information, not when you want to interpret `TextToken[]` into output.
+
 ---
 
 ## API — Core
+
+### `interpretText(input, parser, ruleset, env)`
+
+Thin convenience wrapper around `parser.parse(input)` + `interpretTokens(...)`.
+
+```ts
+function* interpretText<TNode, TEnv>(
+    input: string,
+    parser: ParserLike,
+    ruleset: InterpretRuleset<TNode, TEnv>,
+    env: TEnv,
+): Generator<TNode>;
+```
+
+Use this when you want a small derived-package helper without changing the package boundary.
+It still consumes `TextToken[]` internally and does not use `parser.structural(...)`.
+
+`ParserLike` means any object with `parse(input: string): TextToken[]`.
 
 ### `interpretTokens(tokens, ruleset, env)`
 
@@ -849,6 +885,14 @@ try {
 ---
 
 ## Changelog
+
+### 0.1.3
+
+- Added `interpretText(input, parser, ruleset, env)` as the recommended convenience entry for derived-package usage
+- Updated documentation to promote `interpretText` in Quick Start and API docs
+- Clarified package boundaries: `token-walker` consumes `TextToken[]`, while structural parsing belongs to
+  `yume-dsl-rich-text` / `yume-dsl-shiki-highlight`
+- Updated `yume-dsl-rich-text` dependency to `^0.1.20`
 
 ### 0.1.2
 
