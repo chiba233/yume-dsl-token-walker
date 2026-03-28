@@ -34,11 +34,15 @@
   },
   "keywords": [
     "yume-dsl",
+    "yume-dsl-rich-text",
     "dsl",
+    "rich-text",
+    "token-walker",
+    "token-tree",
     "interpreter",
-    "token",
-    "ast",
-    "visitor"
+    "visitor",
+    "renderer-core",
+    "custom-markup"
   ],
   "author": "Hoshino Yumeka",
   "license": "MIT",
