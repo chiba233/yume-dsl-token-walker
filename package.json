@@ -58,7 +58,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "yume-dsl-rich-text": "^1.0.1"
+    "yume-dsl-rich-text": "^1.0.4"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
