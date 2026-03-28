@@ -56,7 +56,7 @@ const reportError = <TNode, TEnv>(
   phase: "interpret" | "flatten" | "traversal" | "internal",
   token?: TextToken,
 ): void => {
-  ruleset.onError?.({ error, phase, token, env });
+  ruleset.onError?.({ error, phase, token, position: token?.position, env });
 };
 
 // ── Internal: resolve & iterate ──

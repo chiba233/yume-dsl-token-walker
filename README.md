@@ -27,6 +27,10 @@ It intentionally consumes `TextToken[]`, not structural parse nodes.
 If you need syntax-aware analysis or highlighting, use `parseStructural` from `yume-dsl-rich-text` or
 [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight).
 
+For new parser setup, prefer `createParser(...)`.
+If you need custom delimiters or a custom escape marker upstream, prefer `createEasySyntax(...)` and pass the resulting
+`syntax` explicitly into the parser.
+
 ---
 
 ## Table of Contents
@@ -85,7 +89,9 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] ──▶ yume-d
 
 Boundary notes:
 
-- `yume-dsl-token-walker` consumes `parseRichText(...)` or `createParser(...).parse(...)` output.
+- Recommended upstream path: `createParser(...).parse(...)`.
+- If you customize delimiters upstream, prefer `createEasySyntax(...)` + `createParser({ syntax, ... })`.
+- `yume-dsl-token-walker` also accepts legacy `parseRichText(...)` output because the boundary is still `TextToken[]`.
 - `parseStructural(...)` and `createParser(...).structural(...)` belong to syntax analysis / highlighting, not walker input.
 
 ---
@@ -105,15 +111,20 @@ pnpm add yume-dsl-token-walker
 ## Quick Start
 
 ```ts
-import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {createEasySyntax, createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
 import {interpretText} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const parser = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold"]),
 });
 
 const html = Array.from(
-    interpretText("Hello $$bold(world)$$", parser, {
+    interpretText("Hello %%bold(world)%%", parser, {
         createText: (text) => text,
         interpret: (token, helpers) => {
             if (token.type === "bold")
@@ -128,6 +139,7 @@ const html = Array.from(
 
 For direct `TextToken[]` input, use `interpretTokens(...)`.
 `parser.structural(...)` is a different layer and is not consumed by this package.
+If you do not need custom syntax, omit `syntax` and use plain `createParser(...)`.
 
 ---
 
@@ -162,14 +174,19 @@ All public exports at a glance:
 ### Use `env` to inject runtime context
 
 ```ts
-import {createSimpleInlineHandlers, createParser} from "yume-dsl-rich-text";
+import {createEasySyntax, createSimpleInlineHandlers, createParser} from "yume-dsl-rich-text";
 import {interpretTokens} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const dsl = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold"]),
 });
 
-const tokens = dsl.parse("Hello $$bold(world)$$");
+const tokens = dsl.parse("Hello %%bold(world)%%");
 
 const result = Array.from(
     interpretTokens(
@@ -251,10 +268,15 @@ This is useful when:
 Sometimes you do not want to recursively interpret a subtree. You just want its readable text.
 
 ```ts
-import {createSimpleInlineHandlers, createSimpleBlockHandlers, createParser} from "yume-dsl-rich-text";
+import {createEasySyntax, createSimpleInlineHandlers, createSimpleBlockHandlers, createParser} from "yume-dsl-rich-text";
 import {interpretTokens} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const dsl = createParser({
+    syntax,
     handlers: {
         ...createSimpleInlineHandlers(["bold"]),
         ...createSimpleBlockHandlers(["info"]),
@@ -262,7 +284,7 @@ const dsl = createParser({
     blockTags: ["info"],
 });
 
-const tokens = dsl.parse("$$info(Title | hello $$bold(world)$$)$$");
+const tokens = dsl.parse("%%info(Title | hello %%bold(world)%%)%%");
 
 const result = Array.from(
     interpretTokens(
@@ -466,9 +488,14 @@ interface Env {
 }
 
 // ── parser.ts ──
-import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {createEasySyntax, createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+
+const syntax = createEasySyntax({
+    tag: "%%",
+});
 
 const parser = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold", "italic", "link", "color"]),
 });
 
@@ -516,7 +543,7 @@ const renderNode = (node: HtmlNode): string => {
 // ── usage ──
 import {interpretTokens, collectNodes, flattenText} from "yume-dsl-token-walker";
 
-const input = "Hello $$bold($$italic(world)$$)$$ — $$link(click here){href=https://example.com}$$";
+const input = "Hello %%bold(%%italic(world)%%)%% - %%link(click here){href=https://example.com}%%";
 const tokens = parser.parse(input);
 const env: Env = {locale: "zh", theme: "dark"};
 
@@ -738,6 +765,7 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
         error: Error;
         phase: "interpret" | "flatten" | "traversal" | "internal";
         token?: TextToken;
+        position?: SourceSpan;
         env: TEnv;
     }) => void;
 }
@@ -825,13 +853,16 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 Optional error observer. Called with context before the error is thrown. It does **not** suppress the error — the error
 is always rethrown after `onError` returns.
 
+`position` is forwarded from `token.position` when the upstream parser enabled source tracking, for example via
+`createParser({ trackPositions: true, ... })`.
+
 ```ts
 const ruleset = {
     createText: (text: string) => text,
     interpret: () => ({type: "unhandled" as const}),
     onUnhandled: "throw" as const,
-    onError: ({error, phase, token, env}) => {
-        console.error(`[${phase}] ${error.message}`, token?.type);
+    onError: ({error, phase, token, position, env}) => {
+        console.error(`[${phase}] ${error.message}`, token?.type, position?.start.offset, env);
     },
 };
 ```
@@ -889,49 +920,7 @@ try {
 
 ## Changelog
 
-### 1.0.0
-
-- Stable release — API is finalized
-- Updated `yume-dsl-rich-text` dependency to `^1.0.1`
-- Updated `typescript` dev dependency from `^5.7.0` to `^6.0.2`
-
-### 0.1.3
-
-- Added `interpretText(input, parser, ruleset, env)` as the recommended convenience entry for derived-package usage
-- Updated documentation to promote `interpretText` in Quick Start and API docs
-- Clarified package boundaries: `token-walker` consumes `TextToken[]`, while structural parsing belongs to
-  `yume-dsl-rich-text` / `yume-dsl-shiki-highlight`
-- Updated `yume-dsl-rich-text` dependency to `^0.1.20`
-
-### 0.1.2
-
-- Update markdown
-- add ecosystem package
-
-### 0.1.1
-
-- Added helpers: `createRuleset`, `fromHandlerMap`, `dropToken`, `unwrapChildren`, `wrapHandlers`, `debugUnhandled`,
-  `collectNodes`
-- Added `TokenHandler` type — shorthand for a single handler function signature
-- `debugUnhandled` returns narrow type `{ type: "text"; text: string }` — compatible with any `TNode` without fake
-  generics
-- `fromHandlerMap` handler return type narrowed to `ResolvedResult` — handlers should not return `"unhandled"`
-- Split source into `types.ts`, `interpret.ts`, `helpers.ts` (barrel re-export from `index.ts`)
-- README: added table of contents, exports table, grouped sections by category
-- Update "yume-dsl-rich-text" to "0.1.14"
-
-### 0.1.0
-
-- Added `onError` observer — called with `{ error, phase, token, env }` before any error is thrown
-- Error phases: `"interpret"`, `"flatten"`, `"traversal"`, `"internal"`
-- Errors from `onUnhandled` strategy functions are now caught and routed through `onError`
-- Renamed package to `yume-dsl-token-walker`
-- `renderTokens` → `interpretTokens`, `TokenRenderer` → `InterpretRuleset`
-- `defer` → `unhandled`, `empty` → `drop`
-- Split `{ type: "text"; text?: string }` into `{ type: "text"; text: string }` + `{ type: "flatten" }`
-- Replaced `strict` + `fallbackRender` with `onUnhandled` strategy enum
-- Strategy function return type narrowed to `ResolvedResult` (cannot return `"unhandled"`)
-- Removed `collectRendered`
+See [CHANGELOG](./CHANGELOG.md) for the full history.
 
 ---
 

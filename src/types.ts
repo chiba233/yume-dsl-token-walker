@@ -1,4 +1,4 @@
-import type { TextToken } from "yume-dsl-rich-text";
+import type { SourceSpan, TextToken } from "yume-dsl-rich-text";
 
 // ── Result ──
 
@@ -41,6 +41,7 @@ export interface InterpretRuleset<TNode, TEnv = unknown> {
     error: Error;
     phase: "interpret" | "flatten" | "traversal" | "internal";
     token?: TextToken;
+    position?: SourceSpan;
     env: TEnv;
   }) => void;
 }

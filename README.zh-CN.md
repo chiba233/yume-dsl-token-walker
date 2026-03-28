@@ -25,6 +25,9 @@
 如果你需要带语法感知的结构分析或高亮，请使用 `yume-dsl-rich-text` 的 `parseStructural`，或者
 [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight)。
 
+新的 parser 配置建议优先使用 `createParser(...)`。
+如果上游需要自定义定界符或转义标记，优先使用 `createEasySyntax(...)`，再把生成的 `syntax` 显式传给 parser。
+
 ---
 
 ## 目录
@@ -83,7 +86,9 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] ──▶ yume-d
 
 边界说明：
 
-- `yume-dsl-token-walker` 消费 `parseRichText(...)` 或 `createParser(...).parse(...)` 的输出。
+- 推荐的上游路径是 `createParser(...).parse(...)`。
+- 如果你要自定义定界符，优先使用 `createEasySyntax(...)` + `createParser({ syntax, ... })`。
+- `yume-dsl-token-walker` 也能消费旧的 `parseRichText(...)` 输出，因为它的边界始终是 `TextToken[]`。
 - `parseStructural(...)` 和 `createParser(...).structural(...)` 属于语法分析 / 高亮路径，不属于 walker 输入。
 
 ---
@@ -103,15 +108,20 @@ pnpm add yume-dsl-token-walker
 ## 快速上手
 
 ```ts
-import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {createEasySyntax, createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
 import {interpretText} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const parser = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold"]),
 });
 
 const html = Array.from(
-    interpretText("Hello $$bold(world)$$", parser, {
+    interpretText("Hello %%bold(world)%%", parser, {
         createText: (text) => text,
         interpret: (token, helpers) => {
             if (token.type === "bold")
@@ -126,6 +136,7 @@ const html = Array.from(
 
 如果你手里已经有 `TextToken[]`，就直接用 `interpretTokens(...)`。
 `parser.structural(...)` 属于另一层能力，不是本包输入。
+如果你不需要自定义语法，直接省略 `syntax`，使用普通的 `createParser(...)` 即可。
 
 ---
 
@@ -158,14 +169,19 @@ const html = Array.from(
 ### 用 `env` 注入运行时上下文
 
 ```ts
-import {createSimpleInlineHandlers, createParser} from "yume-dsl-rich-text";
+import {createEasySyntax, createSimpleInlineHandlers, createParser} from "yume-dsl-rich-text";
 import {interpretTokens} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const dsl = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold"]),
 });
 
-const tokens = dsl.parse("Hello $$bold(world)$$");
+const tokens = dsl.parse("Hello %%bold(world)%%");
 
 const result = Array.from(
     interpretTokens(
@@ -247,10 +263,15 @@ const debugRuleset = {
 有些时候你不想递归解释整个子树，而是只想拿到它的可读文本。
 
 ```ts
-import {createSimpleInlineHandlers, createSimpleBlockHandlers, createParser} from "yume-dsl-rich-text";
+import {createEasySyntax, createSimpleInlineHandlers, createSimpleBlockHandlers, createParser} from "yume-dsl-rich-text";
 import {interpretTokens} from "yume-dsl-token-walker";
 
+const syntax = createEasySyntax({
+    tag: "%%",
+});
+
 const dsl = createParser({
+    syntax,
     handlers: {
         ...createSimpleInlineHandlers(["bold"]),
         ...createSimpleBlockHandlers(["info"]),
@@ -258,7 +279,7 @@ const dsl = createParser({
     blockTags: ["info"],
 });
 
-const tokens = dsl.parse("$$info(Title | hello $$bold(world)$$)$$");
+const tokens = dsl.parse("%%info(Title | hello %%bold(world)%%)%%");
 
 const result = Array.from(
     interpretTokens(
@@ -461,9 +482,14 @@ interface Env {
 }
 
 // ── parser.ts ──
-import {createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {createEasySyntax, createParser, createSimpleInlineHandlers} from "yume-dsl-rich-text";
+
+const syntax = createEasySyntax({
+    tag: "%%",
+});
 
 const parser = createParser({
+    syntax,
     handlers: createSimpleInlineHandlers(["bold", "italic", "link", "color"]),
 });
 
@@ -511,7 +537,7 @@ const renderNode = (node: HtmlNode): string => {
 // ── usage ──
 import {interpretTokens, collectNodes, flattenText} from "yume-dsl-token-walker";
 
-const input = "Hello $$bold($$italic(world)$$)$$ — $$link(click here){href=https://example.com}$$";
+const input = "Hello %%bold(%%italic(world)%%)%% - %%link(click here){href=https://example.com}%%";
 const tokens = parser.parse(input);
 const env: Env = {locale: "zh", theme: "dark"};
 
@@ -730,6 +756,7 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
         error: Error;
         phase: "interpret" | "flatten" | "traversal" | "internal";
         token?: TextToken;
+        position?: SourceSpan;
         env: TEnv;
     }) => void;
 }
@@ -816,13 +843,16 @@ interface InterpretHelpers<TNode, TEnv = unknown> {
 
 可选的错误观察回调。在错误抛出前调用，携带上下文信息。它**不会**吞掉错误 — `onError` 返回后错误仍会被重新抛出。
 
+当上游 parser 开启源码位置追踪时，例如 `createParser({ trackPositions: true, ... })`，这里的 `position` 会透传
+自 `token.position`。
+
 ```ts
 const ruleset = {
     createText: (text: string) => text,
     interpret: () => ({type: "unhandled" as const}),
     onUnhandled: "throw" as const,
-    onError: ({error, phase, token, env}) => {
-        console.error(`[${phase}] ${error.message}`, token?.type);
+    onError: ({error, phase, token, position, env}) => {
+        console.error(`[${phase}] ${error.message}`, token?.type, position?.start.offset, env);
     },
 };
 ```
@@ -877,47 +907,7 @@ try {
 
 ## 更新日志
 
-### 1.0.0
-
-- 稳定版发布 — API 已定型
-- 将 `yume-dsl-rich-text` 依赖升级至 `^1.0.1`
-- 将 `typescript` 开发依赖从 `^5.7.0` 升级至 `^6.0.2`
-
-### 0.1.3
-
-- 新增 `interpretText(input, parser, ruleset, env)`，作为派生包场景下推荐的便利入口
-- 更新文档，在快速上手和 API 文档中提升 `interpretText` 的入口层级
-- 明确包边界：`token-walker` 消费 `TextToken[]`，结构化解析属于 `yume-dsl-rich-text` /
-  `yume-dsl-shiki-highlight`
-- 将 `yume-dsl-rich-text` 依赖更新到 `^0.1.20`
-
-### 0.1.2
-
-- 更新文档，添加生态链库。
-
-### 0.1.1
-
-- 新增辅助工具：`createRuleset`、`fromHandlerMap`、`dropToken`、`unwrapChildren`、`wrapHandlers`、`debugUnhandled`、
-  `collectNodes`
-- 新增 `TokenHandler` 类型 — handler 函数签名的简写
-- `debugUnhandled` 返回窄类型 `{ type: "text"; text: string }` — 无需假泛型即可兼容任意 `TNode`
-- `fromHandlerMap` 的 handler 返回类型收紧为 `ResolvedResult` — handler 内不应返回 `"unhandled"`
-- 源码拆分为 `types.ts`、`interpret.ts`、`helpers.ts`（`index.ts` 统一 re-export）
-- README：添加目录、导出一览表，按类别分组
-- 更新 "yume-dsl-rich-text" 到 "0.1.14"，虽然此版本只是更新readme
-
-### 0.1.0
-
-- 新增 `onError` 错误观察回调 — 在抛出前调用，携带 `{ error, phase, token, env }` 上下文
-- 错误阶段：`"interpret"`、`"flatten"`、`"traversal"`、`"internal"`
-- `onUnhandled` 策略函数抛出的错误现在也会经过 `onError` 回调
-- 包重命名为 `yume-dsl-token-walker`
-- `renderTokens` → `interpretTokens`，`TokenRenderer` → `InterpretRuleset`
-- `defer` → `unhandled`，`empty` → `drop`
-- `{ type: "text"; text?: string }` 拆分为 `{ type: "text"; text: string }` + `{ type: "flatten" }`
-- `strict` + `fallbackRender` 合并为 `onUnhandled` 策略枚举
-- 策略函数返回类型收紧为 `ResolvedResult`（不允许返回 `"unhandled"`）
-- 移除 `collectRendered`
+详见 [更新日志](./CHANGELOG.zh-CN.md)。
 
 ---
 
