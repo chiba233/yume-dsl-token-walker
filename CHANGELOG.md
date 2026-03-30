@@ -1,5 +1,9 @@
 # Changelog
 
+### 1.0.3
+
+- Update markdown
+
 ### 1.0.2
 
 - Added async interpretation API — a full async mirror of the synchronous core

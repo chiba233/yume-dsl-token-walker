@@ -110,6 +110,7 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] ──▶ yume-d
 | [`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL)                        | Parser — text to token tree                             |
 | **`yume-dsl-token-walker`**                                                        | Interpreter — token tree to output nodes (this package) |
 | [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight) | Syntax highlighting — tokens or TextMate grammar        |
+| [`yume-dsl-markdown-it`](https://github.com/chiba233/yume-dsl-markdown-it)         | markdown-it plugin — DSL tags inside Markdown           |
 
 Boundary notes:
 

@@ -6,11 +6,12 @@ Thanks for your interest in contributing! This guide covers how to set up the pr
 
 ## Ecosystem
 
-| Package                                                           | Description                                               |
-|-------------------------------------------------------------------|-----------------------------------------------------------|
-| [`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL)       | Parser core — text to token tree                          |
-| **`yume-dsl-token-walker`**                                       | Interpreter core — token tree to output nodes (this repo) |
+| Package                                                                            | Description                                               |
+|------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| [`yume-dsl-rich-text`](https://github.com/chiba233/yumeDSL)                        | Parser core — text to token tree                          |
+| **`yume-dsl-token-walker`**                                                        | Interpreter core — token tree to output nodes (this repo) |
 | [`yume-dsl-shiki-highlight`](https://github.com/chiba233/yume-dsl-shiki-highlight) | Highlight layer — structural tree to colored tokens       |
+| [`yume-dsl-markdown-it`](https://github.com/chiba233/yume-dsl-markdown-it)         | markdown-it plugin — DSL tags inside Markdown             |
 
 ## Prerequisites
 
@@ -79,7 +80,8 @@ fix(token-walker): preserve handler order during recursive walk
 
 ## Reporting bugs
 
-Please use the [Bug Report](https://github.com/chiba233/yume-dsl-token-walker/issues/new?template=bug_report.yml) template. Include:
+Please use the [Bug Report](https://github.com/chiba233/yume-dsl-token-walker/issues/new?template=bug_report.yml)
+template. Include:
 
 1. Which package and version is affected
 2. Minimal reproduction code
@@ -87,7 +89,8 @@ Please use the [Bug Report](https://github.com/chiba233/yume-dsl-token-walker/is
 
 ## Suggesting features
 
-Use the [Feature Request](https://github.com/chiba233/yume-dsl-token-walker/issues/new?template=feature_request.yml) template.
+Use the [Feature Request](https://github.com/chiba233/yume-dsl-token-walker/issues/new?template=feature_request.yml)
+template.
 
 ## License
 
