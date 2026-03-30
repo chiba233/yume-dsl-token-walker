@@ -1,5 +1,16 @@
 # Changelog
 
+### 1.0.4
+
+- New structural query utilities for `StructuralNode[]` trees:
+  - `findFirst(nodes, predicate)` — depth-first pre-order search, returns first match
+  - `findAll(nodes, predicate)` — depth-first pre-order search, returns all matches
+  - `nodeAtOffset(nodes, offset)` — find deepest node at a source offset (requires `trackPositions`)
+  - `enclosingNode(nodes, offset)` — find deepest enclosing tag node at a source offset (requires `trackPositions`)
+  - `StructuralTagNode` type — narrowed union of inline / raw / block node types;
+    `enclosingNode` returns `StructuralTagNode | undefined` so callers can access `.tag` without extra type guards
+  - `StructuralVisitContext` / `StructuralPredicate` types
+
 ### 1.0.3
 
 - Update markdown

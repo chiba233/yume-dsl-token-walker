@@ -1,5 +1,16 @@
 # 更新日志
 
+### 1.0.4
+
+- 新增 `StructuralNode[]` 树的结构查询工具：
+  - `findFirst(nodes, predicate)` — 深度优先先序搜索，返回第一个匹配
+  - `findAll(nodes, predicate)` — 深度优先先序搜索，返回所有匹配
+  - `nodeAtOffset(nodes, offset)` — 按源码偏移查找最深节点（需 `trackPositions`）
+  - `enclosingNode(nodes, offset)` — 按源码偏移查找最深的包围 tag 节点（需 `trackPositions`）
+  - `StructuralTagNode` 类型 — inline / raw / block 节点的收窄联合；
+    `enclosingNode` 返回 `StructuralTagNode | undefined`，调用者可直接访问 `.tag` 无需额外类型守卫
+  - `StructuralVisitContext` / `StructuralPredicate` 类型
+
 ### 1.0.3
 
 - 更新文档

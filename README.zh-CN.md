@@ -82,6 +82,13 @@
         - [AsyncInterpretHelpers](#asyncinterprethelpers)
         - [Awaitable](#awaitablet)
         - [AsyncTokenHandler](#asynctokenhandler)
+- [结构查询](#结构查询)
+    - [findFirst](#findfirstnodes-predicate)
+    - [findAll](#findallnodes-predicate)
+    - [nodeAtOffset](#nodeatoffsetnodes-offset)
+    - [enclosingNode](#enclosingnodesnodes-offset)
+    - [StructuralVisitContext](#structuralvisitcontext)
+    - [StructuralPredicate](#structuralpredicate)
 - [结构切片](#结构切片)
     - [parseSlice](#parseslicefulltext-span-parser-tracker)
     - [ParseOverrides](#parseoverrides)
@@ -189,6 +196,18 @@ const html = Array.from(
 | `TokenHandler`      | 类型 | 单个 handler 函数签名的简写                                          |
 | `TextResult`        | 类型 | `{ type: "text"; text: string }` — `debugUnhandled` 回调的返回类型 |
 | `ParserLike`        | 类型 | 解析器接口 — `parse(input, overrides?)` 返回 `TextToken[]`         |
+
+**结构查询**
+
+| 导出                       | 类别 | 说明                                                                         |
+|--------------------------|----|----------------------------------------------------------------------------|
+| `findFirst`              | 函数 | 深度优先先序搜索 — 返回第一个匹配的 `StructuralNode`                                       |
+| `findAll`                | 函数 | 深度优先先序搜索 — 返回所有匹配的 `StructuralNode`                                        |
+| `nodeAtOffset`           | 函数 | 按源码偏移查找最深节点（需 `trackPositions`）                                            |
+| `enclosingNode`          | 函数 | 按源码偏移查找最深的 tag 节点（需 `trackPositions`）                                      |
+| `StructuralTagNode`      | 类型 | Tag 形式节点：`Extract<StructuralNode, { type: "inline" \| "raw" \| "block" }>` |
+| `StructuralVisitContext` | 类型 | 传给谓词的上下文 — `parent`、`depth`、`index`                                        |
+| `StructuralPredicate`    | 类型 | `findFirst` / `findAll` 的谓词函数签名                                            |
 
 **结构切片**
 
@@ -1118,6 +1137,137 @@ type AsyncTokenHandler<TNode, TEnv = unknown> = (
     token: TextToken,
     helpers: AsyncInterpretHelpers<TNode, TEnv>,
 ) => Awaitable<AsyncResolvedResult<TNode>>;
+```
+
+---
+
+## 结构查询
+
+在 `StructuralNode[]` 树中搜索和定位节点。这些辅助函数操作的是来自 `parseStructural` 的结构解析树，
+而不是 `TextToken[]`。
+
+### `findFirst(nodes, predicate)`
+
+深度优先先序搜索。返回第一个使 `predicate` 返回 `true` 的节点，或 `undefined`。
+
+```ts
+const findFirst: (
+    nodes: StructuralNode[],
+    predicate: StructuralPredicate,
+) => StructuralNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {findFirst} from "yume-dsl-token-walker";
+
+const tree = parseStructural("Hello $$bold($$italic(world)$$)$$");
+const italic = findFirst(tree, (node) => node.type === "inline" && node.tag === "italic");
+// italic.tag === "italic"
+```
+
+### `findAll(nodes, predicate)`
+
+深度优先先序搜索。返回所有使 `predicate` 返回 `true` 的节点。
+
+```ts
+const findAll: (
+    nodes: StructuralNode[],
+    predicate: StructuralPredicate,
+) => StructuralNode[];
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {findAll} from "yume-dsl-token-walker";
+
+const tree = parseStructural("$$bold(a)$$ then $$bold(b)$$");
+const bolds = findAll(tree, (node) => node.type === "inline" && node.tag === "bold");
+// bolds.length === 2
+```
+
+### `nodeAtOffset(nodes, offset)`
+
+查找源码 span 包含给定偏移量的最深节点。
+需要以 `trackPositions: true` 解析的节点。
+
+```ts
+const nodeAtOffset: (
+    nodes: StructuralNode[],
+    offset: number,
+) => StructuralNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {nodeAtOffset} from "yume-dsl-token-walker";
+
+const input = "Hello $$bold(world)$$";
+const tree = parseStructural(input, {trackPositions: true});
+const node = nodeAtOffset(tree, 14); // 偏移量 14 在 "world" 内部
+// node.type === "text", node.value === "world"
+```
+
+如果没有节点包含该偏移量，或未启用位置追踪，返回 `undefined`。
+
+### `enclosingNode(nodes, offset)`
+
+查找源码 span 包含给定偏移量的最深 tag 节点（inline / raw / block）。
+与 `nodeAtOffset` 不同，它跳过 text、escape 和 separator 节点 —
+只返回结构上有意义的"包围" tag 节点。
+
+返回类型为 `StructuralTagNode | undefined` — 已收窄，可直接访问
+`.tag`、`.children`、`.args` 等字段，无需额外类型守卫。
+
+```ts
+const enclosingNode: (
+    nodes: StructuralNode[],
+    offset: number,
+) => StructuralTagNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {enclosingNode} from "yume-dsl-token-walker";
+
+const input = "Hello $$bold(world)$$";
+const tree = parseStructural(input, {trackPositions: true});
+const tag = enclosingNode(tree, 14); // 偏移量 14 在 "world" 内部
+// tag.type === "inline", tag.tag === "bold"
+```
+
+如果偏移量不在任何 tag 内部，或未启用位置追踪，返回 `undefined`。
+
+> **偏移量语义：** offset 必须是传给 `parseStructural` 的**原始源码文本**的字符串索引，
+> 而不是渲染后、打印后或展示文本中的索引。此约定同样适用于 `nodeAtOffset`。
+
+### StructuralVisitContext
+
+传给 `findFirst` 和 `findAll` 谓词的上下文：
+
+```ts
+interface StructuralVisitContext {
+    parent: StructuralNode | null;
+    depth: number;
+    index: number;
+}
+```
+
+| 字段       | 说明                |
+|----------|-------------------|
+| `parent` | 父节点，顶层节点时为 `null` |
+| `depth`  | 嵌套深度（顶层为 0）       |
+| `index`  | 在父节点子数组中的索引       |
+
+### StructuralPredicate
+
+`findFirst` 和 `findAll` 使用的谓词函数签名：
+
+```ts
+type StructuralPredicate = (
+    node: StructuralNode,
+    ctx: StructuralVisitContext,
+) => boolean;
 ```
 
 ---

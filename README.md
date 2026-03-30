@@ -85,6 +85,13 @@ If you need custom delimiters or a custom escape marker upstream, prefer `create
         - [AsyncInterpretHelpers](#asyncinterprethelpers)
         - [Awaitable](#awaitablet)
         - [AsyncTokenHandler](#asynctokenhandler)
+- [Structural Query](#structural-query)
+    - [findFirst](#findfirstnodes-predicate)
+    - [findAll](#findallnodes-predicate)
+    - [nodeAtOffset](#nodeatoffsetnodes-offset)
+    - [enclosingNode](#enclosingnodesnodes-offset)
+    - [StructuralVisitContext](#structuralvisitcontext)
+    - [StructuralPredicate](#structuralpredicate)
 - [Structural Slice](#structural-slice)
     - [parseSlice](#parseslicefulltext-span-parser-tracker)
     - [ParseOverrides](#parseoverrides)
@@ -195,6 +202,18 @@ All public exports at a glance:
 | `TokenHandler`      | type     | Shorthand for a single handler function signature                                  |
 | `TextResult`        | type     | `{ type: "text"; text: string }` — return type of `debugUnhandled`'s callback      |
 | `ParserLike`        | type     | Parser interface — `parse(input, overrides?)` returning `TextToken[]`              |
+
+**Structural query**
+
+| Export                  | Kind     | Description                                                              |
+|-------------------------|----------|--------------------------------------------------------------------------|
+| `findFirst`             | function | Depth-first pre-order search — first matching `StructuralNode`           |
+| `findAll`               | function | Depth-first pre-order search — all matching `StructuralNode`s            |
+| `nodeAtOffset`          | function | Find deepest node at a source byte offset (requires `trackPositions`)    |
+| `enclosingNode`         | function | Find deepest tag node enclosing a source offset (requires `trackPositions`) |
+| `StructuralTagNode`     | type     | Tag-form node: `Extract<StructuralNode, { type: "inline" \| "raw" \| "block" }>` |
+| `StructuralVisitContext`| type     | Context passed to predicates — `parent`, `depth`, `index`                |
+| `StructuralPredicate`   | type     | Predicate function signature for `findFirst` / `findAll`                 |
 
 **Structural slice**
 
@@ -1130,6 +1149,138 @@ type AsyncTokenHandler<TNode, TEnv = unknown> = (
     token: TextToken,
     helpers: AsyncInterpretHelpers<TNode, TEnv>,
 ) => Awaitable<AsyncResolvedResult<TNode>>;
+```
+
+---
+
+## Structural Query
+
+Search and locate nodes within a `StructuralNode[]` tree. These helpers operate on the structural parse tree
+from `parseStructural`, not on `TextToken[]`.
+
+### `findFirst(nodes, predicate)`
+
+Depth-first pre-order search. Returns the first node for which `predicate` returns `true`, or `undefined`.
+
+```ts
+const findFirst: (
+    nodes: StructuralNode[],
+    predicate: StructuralPredicate,
+) => StructuralNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {findFirst} from "yume-dsl-token-walker";
+
+const tree = parseStructural("Hello $$bold($$italic(world)$$)$$");
+const italic = findFirst(tree, (node) => node.type === "inline" && node.tag === "italic");
+// italic.tag === "italic"
+```
+
+### `findAll(nodes, predicate)`
+
+Depth-first pre-order search. Returns all nodes for which `predicate` returns `true`.
+
+```ts
+const findAll: (
+    nodes: StructuralNode[],
+    predicate: StructuralPredicate,
+) => StructuralNode[];
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {findAll} from "yume-dsl-token-walker";
+
+const tree = parseStructural("$$bold(a)$$ then $$bold(b)$$");
+const bolds = findAll(tree, (node) => node.type === "inline" && node.tag === "bold");
+// bolds.length === 2
+```
+
+### `nodeAtOffset(nodes, offset)`
+
+Find the deepest (most specific) node whose source span contains the given byte offset.
+Requires nodes parsed with `trackPositions: true`.
+
+```ts
+const nodeAtOffset: (
+    nodes: StructuralNode[],
+    offset: number,
+) => StructuralNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {nodeAtOffset} from "yume-dsl-token-walker";
+
+const input = "Hello $$bold(world)$$";
+const tree = parseStructural(input, {trackPositions: true});
+const node = nodeAtOffset(tree, 14); // offset 14 is inside "world"
+// node.type === "text", node.value === "world"
+```
+
+Returns `undefined` if no node contains the offset or if positions were not tracked.
+
+### `enclosingNode(nodes, offset)`
+
+Find the deepest tag node (inline / raw / block) whose source span contains the given offset.
+Unlike `nodeAtOffset`, this skips text, escape, and separator nodes — it returns only structurally
+meaningful "enclosing" tag nodes.
+
+The return type is `StructuralTagNode | undefined` — already narrowed so you can access
+`.tag`, `.children`, `.args`, etc. without an extra type guard.
+
+```ts
+const enclosingNode: (
+    nodes: StructuralNode[],
+    offset: number,
+) => StructuralTagNode | undefined;
+```
+
+```ts
+import {parseStructural} from "yume-dsl-rich-text";
+import {enclosingNode} from "yume-dsl-token-walker";
+
+const input = "Hello $$bold(world)$$";
+const tree = parseStructural(input, {trackPositions: true});
+const tag = enclosingNode(tree, 14); // offset 14 is inside "world"
+// tag.type === "inline", tag.tag === "bold"
+```
+
+Returns `undefined` if the offset is not inside any tag, or if positions were not tracked.
+
+> **Offset semantics:** the offset must be a string index into the original source text that was
+> passed to `parseStructural` — not an index into rendered, printed, or display text.
+> This also applies to `nodeAtOffset`.
+
+### StructuralVisitContext
+
+Context passed to predicates in `findFirst` and `findAll`:
+
+```ts
+interface StructuralVisitContext {
+    parent: StructuralNode | null;
+    depth: number;
+    index: number;
+}
+```
+
+| Field    | Description                                       |
+|----------|---------------------------------------------------|
+| `parent` | The parent node, or `null` for top-level nodes    |
+| `depth`  | Nesting depth (0 for top-level)                   |
+| `index`  | Index within the parent's child array              |
+
+### StructuralPredicate
+
+Predicate function signature used by `findFirst` and `findAll`:
+
+```ts
+type StructuralPredicate = (
+    node: StructuralNode,
+    ctx: StructuralVisitContext,
+) => boolean;
 ```
 
 ---

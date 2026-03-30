@@ -30,3 +30,7 @@ export {
   wrapAsyncHandlers,
   wrapHandlers,
 } from "./helpers.ts";
+
+// ── Structural query ──
+export { findFirst, findAll, nodeAtOffset, enclosingNode } from "./query.ts";
+export type { StructuralVisitContext, StructuralPredicate, StructuralTagNode } from "./query.ts";
