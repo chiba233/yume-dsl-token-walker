@@ -161,7 +161,7 @@ interface InterpretRuleset<TNode, TEnv = unknown> {
     createText: (text: string) => TNode;
     interpret: (token: TextToken, helpers: InterpretHelpers<TNode, TEnv>) => InterpretResult<TNode>;
     onUnhandled?: UnhandledStrategy<TNode, TEnv>;
-    onError?: (context: { error: Error; phase: string; token?: TextToken; position?: SourceSpan; env: TEnv }) => void;
+    onError?: (context: { error: Error; phase: "interpret" | "flatten" | "traversal" | "internal"; token?: TextToken; position?: SourceSpan; env: TEnv }) => void;
 }
 ```
 
