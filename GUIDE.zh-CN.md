@@ -23,7 +23,9 @@ Parser 给你树——这个包负责解释、查询、lint、切片。
 - Lint 框架支持原子化全量自动修复——重叠 edit 按 fix 粒度拒绝，不是按单条 edit
 - `parseSlice` 局部重解析——适合编辑器和增量工作流，只重解析命中的区域
 
-> **200 KB 基准 (Kunpeng 920 / Node v24.14.0):** 全量解析已经很快（`parseRichText` ~33 ms，`parseStructural` ~29 ms）。但在编辑器和增量更新场景里，`nodeAtOffset` + `parseSlice` 仍然是更合适的工具，约 **~0.17 ms**，因为它只重解析被修改的区域。解释 10,000 个 token → HTML 字符串 **~2 ms**。50 条 lint 规则扫描 200 KB 文档 **~45 ms**。
+> **200 KB 基准 (Kunpeng 920 / Node v24.14.0):** 全量解析已经很快（`parseRichText` ~33 ms，`parseStructural` ~29
+> ms）。但在编辑器和增量更新场景里，`nodeAtOffset` + `parseSlice` 仍然是更合适的工具，约 **~0.17 ms**，因为它只重解析被修改的区域。解释
+> 10,000 个 token → HTML 字符串 **~2 ms**。50 条 lint 规则扫描 200 KB 文档 **~45 ms**。
 
 ## 生态
 
@@ -124,7 +126,7 @@ const html = collectNodes(
 | 把 `TextToken[]` 变成 HTML / VNode / 字符串 | [解释](#解释) 或 [异步解释](#异步解释) |
 | 在 `StructuralNode[]` 树里搜索/定位节点        | [结构查询](#结构查询)             |
 | 用自定义规则校验 DSL 源码 + 自动修复                | [Lint](#lint)             |
-| 局部更新 / 增量工作流——只重解析命中的区域              | [结构切片](#结构切片)             |
+| 局部更新 / 增量工作流——只重解析命中的区域               | [结构切片](#结构切片)             |
 
 ---
 
@@ -298,13 +300,14 @@ const html = (
 
 ### 函数
 
-| 函数               | 签名                                                  | 说明                         |
-|------------------|-----------------------------------------------------|----------------------------|
-| `findFirst`      | `(nodes, predicate) => StructuralNode \| undefined` | DFS——第一个匹配，早退出             |
-| `findAll`        | `(nodes, predicate) => StructuralNode[]`            | DFS——所有匹配                  |
-| `walkStructural` | `(nodes, visitor) => void`                          | DFS——带上下文访问每个节点            |
-| `nodeAtOffset`   | `(nodes, offset) => StructuralNode \| undefined`    | 最深节点定位                     |
-| `enclosingNode`  | `(nodes, offset) => StructuralTagNode \| undefined` | 最深**标签**节点（跳过 text/escape） |
+| 函数                 | 签名                                                  | 说明                         |
+|--------------------|-----------------------------------------------------|----------------------------|
+| `findFirst`        | `(nodes, predicate) => StructuralNode \| undefined` | DFS——第一个匹配，早退出             |
+| `findAll`          | `(nodes, predicate) => StructuralNode[]`            | DFS——所有匹配                  |
+| `walkStructural`   | `(nodes, visitor) => void`                          | DFS——带上下文访问每个节点            |
+| `nodeAtOffset`     | `(nodes, offset) => StructuralNode \| undefined`    | 最深节点定位                     |
+| `nodePathAtOffset` | `(nodes, offset) => StructuralNode[]`               | 从根到最深命中节点的完整路径             |
+| `enclosingNode`    | `(nodes, offset) => StructuralTagNode \| undefined` | 最深**标签**节点（跳过 text/escape） |
 
 ### 示例：编辑器光标定位
 
@@ -447,7 +450,8 @@ type DiagnosticSeverity = "error" | "warning" | "info" | "hint";
 
 ## 结构切片
 
-只重解析你刚修改的那一小段。全量解析已经很快，但在光标附近编辑、增量诊断、局部预览这类场景里，`parseSlice` 仍然更合适，因为没必要每次都重跑整篇文档。`parseStructural` 给你地图；`parseSlice` 跳到任意一点。
+只重解析你刚修改的那一小段。全量解析已经很快，但在光标附近编辑、增量诊断、局部预览这类场景里，`parseSlice`
+仍然更合适，因为没必要每次都重跑整篇文档。`parseStructural` 给你地图；`parseSlice` 跳到任意一点。
 
 ```ts
 import {createParser, createSimpleInlineHandlers, buildPositionTracker} from "yume-dsl-rich-text";
@@ -477,12 +481,12 @@ function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, trac
 
 ### 性能（200 KB 文档）
 
-| 步骤                            | 耗时                     |
-|-------------------------------|------------------------|
-| 全量 `parseRichText`            | ~33 ms                 |
-| `parseStructural` + 位置追踪      | ~30 ms                 |
+| 步骤                            | 耗时                |
+|-------------------------------|-------------------|
+| 全量 `parseRichText`            | ~33 ms            |
+| `parseStructural` + 位置追踪      | ~30 ms            |
 | `nodeAtOffset` + `parseSlice` | ~0.17 ms（光标局部重解析） |
-| `buildPositionTracker`（重建）    | ~1.06 ms（只在换行变化时）      |
+| `buildPositionTracker`（重建）    | ~1.06 ms（只在换行变化时） |
 
 详见[结构切片 wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/zh-CN-Structural-Slice)：完整增量管线 demo +
 interpret 集成。
@@ -523,7 +527,7 @@ const ruleset = {
 | 类别       | 导出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 |----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **同步**   | `interpretText`, `interpretTokens`, `flattenText`, `createRuleset`, `fromHandlerMap`, `dropToken`, `unwrapChildren`, `wrapHandlers`, `debugUnhandled`, `collectNodes`                                                                                                                                                                                                                                                                                                                                                                 |
-| **结构查询** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `enclosingNode`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **结构查询** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `nodePathAtOffset`, `enclosingNode`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **Lint** | `lintStructural`, `applyLintFixes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **结构切片** | `parseSlice`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **异步**   | `interpretTextAsync`, `interpretTokensAsync`, `fromAsyncHandlerMap`, `wrapAsyncHandlers`, `collectNodesAsync`                                                                                                                                                                                                                                                                                                                                                                                                                         |

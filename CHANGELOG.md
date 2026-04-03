@@ -2,7 +2,13 @@
 
 ### 1.0.6
 
-- Update markdown
+- New: `nodePathAtOffset(nodes, offset)` — returns the full path from root to the
+  deepest node containing the given source offset, as `StructuralNode[]`. The first
+  element is the outermost match, the last is the deepest (same as `nodeAtOffset`).
+  Useful for editor breadcrumbs, context-aware completion, and nesting level display
+- Documentation: performance numbers updated to reflect `yume-dsl-rich-text` 1.1.1
+  (`parseRichText` ~33 ms on 200 KB); `parseSlice` narrative reframed from
+  "rescuing slow full-parse" to "cursor-local incremental reparse"
 
 ### 1.0.5
 

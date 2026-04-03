@@ -32,7 +32,7 @@ export {
 } from "./helpers.ts";
 
 // ── Structural query ──
-export { findFirst, findAll, walkStructural, nodeAtOffset, enclosingNode } from "./query.ts";
+export { findFirst, findAll, walkStructural, nodeAtOffset, nodePathAtOffset, enclosingNode } from "./query.ts";
 export type { StructuralVisitContext, StructuralPredicate, StructuralVisitor, StructuralTagNode } from "./query.ts";
 
 // ── Lint ──

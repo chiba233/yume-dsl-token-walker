@@ -294,6 +294,7 @@ Search and locate nodes in a `StructuralNode[]` tree from `parseStructural`.
 | `findAll` | `(nodes, predicate) => StructuralNode[]` | DFS — all matches |
 | `walkStructural` | `(nodes, visitor) => void` | DFS — visit every node with context |
 | `nodeAtOffset` | `(nodes, offset) => StructuralNode \| undefined` | Deepest node at source offset |
+| `nodePathAtOffset` | `(nodes, offset) => StructuralNode[]` | Full path from root to deepest node at offset |
 | `enclosingNode` | `(nodes, offset) => StructuralTagNode \| undefined` | Deepest **tag** node (skips text/escape) |
 
 ### Example: editor cursor location
@@ -484,7 +485,7 @@ for logging demos, error phase table, and safety implementation details.
 | Category | Exports |
 |----------|---------|
 | **Sync** | `interpretText`, `interpretTokens`, `flattenText`, `createRuleset`, `fromHandlerMap`, `dropToken`, `unwrapChildren`, `wrapHandlers`, `debugUnhandled`, `collectNodes` |
-| **Structural query** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `enclosingNode` |
+| **Structural query** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `nodePathAtOffset`, `enclosingNode` |
 | **Lint** | `lintStructural`, `applyLintFixes` |
 | **Structural slice** | `parseSlice` |
 | **Async** | `interpretTextAsync`, `interpretTokensAsync`, `fromAsyncHandlerMap`, `wrapAsyncHandlers`, `collectNodesAsync` |

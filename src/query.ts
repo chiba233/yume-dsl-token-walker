@@ -148,6 +148,42 @@ export const nodeAtOffset = (
   offset: number,
 ): StructuralNode | undefined => walkAtOffset(nodes, offset, undefined);
 
+// ── nodePathAtOffset ──
+
+const walkPathAtOffset = (
+  nodes: StructuralNode[],
+  offset: number,
+  path: StructuralNode[],
+): StructuralNode[] => {
+  for (const node of nodes) {
+    const pos = node.position;
+    if (!pos) continue;
+    if (offset < pos.start.offset || offset >= pos.end.offset) continue;
+    path.push(node);
+    for (const group of getChildGroups(node)) {
+      walkPathAtOffset(group, offset, path);
+    }
+    return path;
+  }
+  return path;
+};
+
+/**
+ * Return the full path from root to the deepest node whose source span
+ * contains the given offset. The first element is the outermost match,
+ * the last element is the deepest (same as what `nodeAtOffset` returns).
+ *
+ * Useful for editor breadcrumbs, context-aware completion, and nesting
+ * level display.
+ *
+ * Requires nodes parsed with `trackPositions: true`.
+ * Returns an empty array if no node contains the offset.
+ */
+export const nodePathAtOffset = (
+  nodes: StructuralNode[],
+  offset: number,
+): StructuralNode[] => walkPathAtOffset(nodes, offset, []);
+
 // ── enclosingNode ──
 
 const isTagNode = (node: StructuralNode): node is StructuralTagNode =>

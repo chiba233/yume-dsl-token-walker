@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { parseStructural } from "yume-dsl-rich-text";
 import type { StructuralNode } from "yume-dsl-rich-text";
-import { findFirst, findAll, nodeAtOffset, enclosingNode } from "../src/index.ts";
+import { findFirst, findAll, nodeAtOffset, nodePathAtOffset, enclosingNode } from "../src/index.ts";
 
 interface TestCase {
   name: string;
@@ -141,6 +141,62 @@ const cases: TestCase[] = [
       const nodes = parseStructural("$$bold(text)$$");
       const result = nodeAtOffset(nodes, 0);
       assert.equal(result, undefined);
+    },
+  },
+
+  // ── nodePathAtOffset ──
+  {
+    name: "nodePathAtOffset: returns full path from root to deepest node",
+    run: () => {
+      const input = "before $$bold(hello $$italic(world)$$)$$";
+      const nodes = parseStructural(input, { trackPositions: true });
+      const path = nodePathAtOffset(nodes, 30);
+      assert.equal(path.length, 3);
+      assert.equal(path[0].type, "inline");
+      assert.equal((path[0] as { tag: string }).tag, "bold");
+      assert.equal(path[1].type, "inline");
+      assert.equal((path[1] as { tag: string }).tag, "italic");
+      assert.equal(path[2].type, "text");
+      assert.equal((path[2] as { value: string }).value, "world");
+    },
+  },
+  {
+    name: "nodePathAtOffset: returns single-element path for top-level text",
+    run: () => {
+      const input = "before $$bold(hello)$$";
+      const nodes = parseStructural(input, { trackPositions: true });
+      const path = nodePathAtOffset(nodes, 0);
+      assert.equal(path.length, 1);
+      assert.equal(path[0].type, "text");
+      assert.equal((path[0] as { value: string }).value, "before ");
+    },
+  },
+  {
+    name: "nodePathAtOffset: returns empty array for out-of-range offset",
+    run: () => {
+      const input = "hello";
+      const nodes = parseStructural(input, { trackPositions: true });
+      const path = nodePathAtOffset(nodes, 999);
+      assert.deepEqual(path, []);
+    },
+  },
+  {
+    name: "nodePathAtOffset: returns empty array when positions not tracked",
+    run: () => {
+      const nodes = parseStructural("$$bold(text)$$");
+      const path = nodePathAtOffset(nodes, 0);
+      assert.deepEqual(path, []);
+    },
+  },
+  {
+    name: "nodePathAtOffset: last element matches nodeAtOffset result",
+    run: () => {
+      const input = "$$bold($$italic(deep)$$)$$";
+      const nodes = parseStructural(input, { trackPositions: true });
+      const path = nodePathAtOffset(nodes, 16);
+      const single = nodeAtOffset(nodes, 16);
+      assert.ok(path.length > 0);
+      assert.strictEqual(path[path.length - 1], single);
     },
   },
 

@@ -2,7 +2,11 @@
 
 ### 1.0.6
 
-- 更新文档
+- 新增：`nodePathAtOffset(nodes, offset)` —— 返回从根到最深命中节点的完整路径
+  （`StructuralNode[]`）。第一个元素是最外层匹配，最后一个是最深层（与 `nodeAtOffset` 相同）。
+  适用于编辑器面包屑、上下文补全、嵌套层级显示
+- 文档：性能数据同步 `yume-dsl-rich-text` 1.1.1（`parseRichText` 200 KB ~33 ms）；
+  `parseSlice` 叙事从"拯救慢全量解析"调整为"光标局部增量重解析"
 
 ### 1.0.5
 
