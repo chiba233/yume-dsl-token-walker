@@ -23,7 +23,7 @@ Parser gives you trees — this package interprets, queries, lints, and slices t
 - Lint framework with atomic all-or-nothing auto-fix — overlapping edits are rejected per-fix, not per-edit
 - Region re-parse via `parseSlice` — ideal for editor and incremental workflows, only reparses the touched region
 
-> **200 KB benchmark (Kunpeng 920 / Node v24.14.0):** full-document parsing is already fast (`parseRichText` ~33 ms, `parseStructural` ~29 ms). `nodeAtOffset` + `parseSlice` is still the right tool for editor and incremental workflows at **~0.17 ms**, because it reparses only the touched region. Interpret 10,000 tokens → HTML string in **~2 ms**. Lint 50 rules against a 200 KB document in **~45 ms**.
+> **200 KB benchmark (Kunpeng 920 / Node v24.14.0):** full-document parsing is already fast (`parseRichText` ~24 ms, `parseStructural` ~21 ms). `nodeAtOffset` + `parseSlice` is still the right tool for editor and incremental workflows at **~0.17 ms**, because it reparses only the touched region. Interpret 10,000 tokens → HTML string in **~2 ms**. Lint 50 rules against a 200 KB document in **~45 ms**.
 
 ## Ecosystem
 
@@ -441,8 +441,8 @@ Build the tracker **once** with `buildPositionTracker(fullText)` — only rebuil
 
 | Step | Time |
 |------|------|
-| Full `parseRichText` | ~33 ms |
-| `parseStructural` + tracking | ~30 ms |
+| Full `parseRichText` | ~24 ms |
+| `parseStructural` + tracking | ~31 ms |
 | `nodeAtOffset` + `parseSlice` | ~0.17 ms (cursor-local reparse) |
 | `buildPositionTracker` (rebuild) | ~1.06 ms (only when newlines change) |
 

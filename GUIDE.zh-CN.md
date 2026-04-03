@@ -23,7 +23,7 @@ Parser 给你树——这个包负责解释、查询、lint、切片。
 - Lint 框架支持原子化全量自动修复——重叠 edit 按 fix 粒度拒绝，不是按单条 edit
 - `parseSlice` 局部重解析——适合编辑器和增量工作流，只重解析命中的区域
 
-> **200 KB 基准 (Kunpeng 920 / Node v24.14.0):** 全量解析已经很快（`parseRichText` ~33 ms，`parseStructural` ~29
+> **200 KB 基准 (Kunpeng 920 / Node v24.14.0):** 全量解析已经很快（`parseRichText` ~24 ms，`parseStructural` ~21
 > ms）。但在编辑器和增量更新场景里，`nodeAtOffset` + `parseSlice` 仍然是更合适的工具，约 **~0.17 ms**，因为它只重解析被修改的区域。解释
 > 10,000 个 token → HTML 字符串 **~2 ms**。50 条 lint 规则扫描 200 KB 文档 **~45 ms**。
 
@@ -483,8 +483,8 @@ function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, trac
 
 | 步骤                            | 耗时                |
 |-------------------------------|-------------------|
-| 全量 `parseRichText`            | ~33 ms            |
-| `parseStructural` + 位置追踪      | ~30 ms            |
+| 全量 `parseRichText`            | ~24 ms            |
+| `parseStructural` + 位置追踪      | ~31 ms            |
 | `nodeAtOffset` + `parseSlice` | ~0.17 ms（光标局部重解析） |
 | `buildPositionTracker`（重建）    | ~1.06 ms（只在换行变化时） |
 
