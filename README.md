@@ -21,9 +21,9 @@ Parser gives you trees — this package interprets, queries, lints, and slices t
 - Sync + async interpret with identical semantics — swap `interpretTokens` ↔ `interpretTokensAsync` without rewriting rules
 - Structural query in O(n) single DFS — `findFirst` early-exits, `nodeAtOffset` / `enclosingNode` binary-narrow then walk
 - Lint framework with atomic all-or-nothing auto-fix — overlapping edits are rejected per-fix, not per-edit
-- Region re-parse via `parseSlice` — edit a 36-char tag in a 200 KB document, only those 36 characters get parsed
+- Region re-parse via `parseSlice` — ideal for editor and incremental workflows, only reparses the touched region
 
-> **200 KB benchmark (Kunpeng 920 / Node v24.14.0):** `parseStructural` ~41 ms → `nodeAtOffset` + `parseSlice` **~0.17 ms** (**8000x faster** than full re-parse). Interpret 10,000 tokens → HTML string in **~2 ms**. Lint 50 rules against a 200 KB document in **~45 ms**.
+> **200 KB benchmark (Kunpeng 920 / Node v24.14.0):** full-document parsing is already fast (`parseRichText` ~33 ms, `parseStructural` ~29 ms). `nodeAtOffset` + `parseSlice` is still the right tool for editor and incremental workflows at **~0.17 ms**, because it reparses only the touched region. Interpret 10,000 tokens → HTML string in **~2 ms**. Lint 50 rules against a 200 KB document in **~45 ms**.
 
 ## Ecosystem
 
@@ -408,7 +408,7 @@ for a CI-ready pipeline.
 
 ## Structural Slice
 
-Re-parse only a region of a large document. `parseStructural` gives you the map; `parseSlice` jumps to any point.
+Re-parse only the region you touched. Full parsing is already fast, but `parseSlice` is for cursor-local and incremental workflows where reparsing the whole document is unnecessary. `parseStructural` gives you the map; `parseSlice` jumps to any point.
 
 ```ts
 import { createParser, createSimpleInlineHandlers, buildPositionTracker } from "yume-dsl-rich-text";
@@ -440,9 +440,9 @@ Build the tracker **once** with `buildPositionTracker(fullText)` — only rebuil
 
 | Step | Time |
 |------|------|
-| Full `parseRichText` | ~1382 ms |
-| `parseStructural` + tracking | ~41 ms (35x faster) |
-| `nodeAtOffset` + `parseSlice` | **~0.17 ms** (8000x faster) |
+| Full `parseRichText` | ~33 ms |
+| `parseStructural` + tracking | ~30 ms |
+| `nodeAtOffset` + `parseSlice` | ~0.17 ms (cursor-local reparse) |
 | `buildPositionTracker` (rebuild) | ~1.06 ms (only when newlines change) |
 
 See the [Structural Slice wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/en-Structural-Slice) for

@@ -1,5 +1,9 @@
 # 更新日志
 
+### 1.0.6
+
+- 更新文档
+
 ### 1.0.5
 
 - 新增：`LintOptions.failFast` —— 为 `true` 时，规则抛异常立即中止 `lintStructural`，
