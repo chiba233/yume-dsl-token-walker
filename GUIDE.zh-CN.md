@@ -22,6 +22,7 @@ Parser 给你树——这个包负责解释、查询、lint、切片。
 - 结构查询 O(n) 单次 DFS——`findFirst` 早退出，`nodeAtOffset` / `enclosingNode` 二分收窄后再走
 - Lint 框架支持原子化全量自动修复——重叠 edit 按 fix 粒度拒绝，不是按单条 edit
 - `parseSlice` 局部重解析——适合编辑器和增量工作流，只重解析命中的区域
+- 增量语法糖——基于 `SourceSpan` 的辅助函数，衔接 `yume-dsl-rich-text` 的增量 session API
 
 > **200 KB 基准 (Kunpeng 920 / Node v24.14.0):** 全量解析已经很快（`parseRichText` ~24 ms，`parseStructural` ~21
 > ms）。但在编辑器和增量更新场景里，`nodeAtOffset` + `parseSlice` 仍然是更合适的工具，约 **~0.17 ms**，因为它只重解析被修改的区域。解释
@@ -36,7 +37,8 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] / StructuralNode
                                    ├─ interpret  (TextToken[] → TNode[])
                                    ├─ query      (StructuralNode[] 搜索)
                                    ├─ lint       (StructuralNode[] 校验)
-                                   └─ slice      (区域重解析)
+                                   ├─ slice      (区域重解析)
+                                   └─ incremental (基于 span 的编辑语法糖)
 ```
 
 | 包                                                                                  | 角色                                    |
@@ -54,7 +56,7 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] / StructuralNode
 [安装](#安装) · [快速上手](#快速上手) · [怎么选](#怎么选)
 
 **API：**
-[解释](#解释) · [异步解释](#异步解释) · [结构查询](#结构查询) · [Lint](#lint) · [结构切片](#结构切片)
+[解释](#解释) · [异步解释](#异步解释) · [结构查询](#结构查询) · [Lint](#lint) · [结构切片](#结构切片) · [增量语法糖](#增量语法糖)
 
 **参考：**
 [错误处理与安全性](#错误处理与安全性) · [导出一览](#导出一览) · [更新日志](#更新日志)
@@ -127,6 +129,7 @@ const html = collectNodes(
 | 在 `StructuralNode[]` 树里搜索/定位节点        | [结构查询](#结构查询)             |
 | 用自定义规则校验 DSL 源码 + 自动修复                | [Lint](#lint)             |
 | 局部更新 / 增量工作流——只重解析命中的区域               | [结构切片](#结构切片)             |
+| 对增量 session 应用基于 span 的编辑             | [增量语法糖](#增量语法糖)           |
 
 ---
 
@@ -493,6 +496,60 @@ interpret 集成。
 
 ---
 
+## 增量语法糖
+
+基于 `SourceSpan` 的辅助函数，衔接 `yume-dsl-rich-text` 的增量 session API。`parseSlice` 从头重解析一个区域，而增量 session
+复用之前的解析状态、只更新变化部分——适合逐键编辑器集成。
+
+### 快速上手
+
+```ts
+import {createSimpleInlineHandlers} from "yume-dsl-rich-text";
+import {createSliceSession, applyIncrementalEditBySpan} from "yume-dsl-token-walker";
+import type {SourceSpan} from "yume-dsl-rich-text";
+
+const handlers = createSimpleInlineHandlers(["bold"]);
+const source = "head $$bold(world)$$ tail";
+
+// 1. 创建 session
+const session = createSliceSession(source, {handlers});
+
+// 2. 构建要替换区域的 span
+const start = source.indexOf("world");
+const span: SourceSpan = {
+    start: {offset: start, line: 1, column: start + 1},
+    end: {offset: start + 5, line: 1, column: start + 6},
+};
+
+// 3. 应用编辑——session 内部自动更新
+const result = applyIncrementalEditBySpan(session, span, "DSL", {handlers});
+
+console.log(result.doc.source); // "head $$bold(DSL)$$ tail"
+console.log(result.mode);       // "incremental" 或 "full-fallback"
+```
+
+### 函数
+
+| 函数                                                             | 说明                                                    |
+|----------------------------------------------------------------|-------------------------------------------------------|
+| `toSliceEdit(span, newText)`                                   | 将 `SourceSpan` 转为 `IncrementalEdit`                   |
+| `replaceSliceText(source, span, newText)`                      | 按 span 偏移量做纯字符串替换                                     |
+| `createSliceSession(source, options?, sessionOptions?)`        | 创建增量 session                                          |
+| `applyIncrementalEditBySpan(session, span, newText, options?)` | 对 session 应用 span 编辑——自动构建新源码，委托给 `session.applyEdit` |
+
+### 增量语法糖 vs. parseSlice
+
+|    | `parseSlice` | 增量语法糖               |
+|----|--------------|---------------------|
+| 策略 | 从头重解析一个区域    | 复用之前的解析状态，只更新 diff  |
+| 适合 | 一次性区域提取、渲染切片 | 持续编辑、逐键更新           |
+| 会话 | 无状态          | 有状态（`SliceSession`） |
+
+详见[增量语法糖 wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/zh-CN-Incremental-Sugar)：完整 API
+参考、类型定义、session 生命周期。
+
+---
+
 ## 错误处理与安全性
 
 `onError` 在错误抛出**之前**调用——观察但不吞掉：
@@ -524,14 +581,15 @@ const ruleset = {
 
 ## 导出一览
 
-| 类别       | 导出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **同步**   | `interpretText`, `interpretTokens`, `flattenText`, `createRuleset`, `fromHandlerMap`, `dropToken`, `unwrapChildren`, `wrapHandlers`, `debugUnhandled`, `collectNodes`                                                                                                                                                                                                                                                                                                                                                                 |
-| **结构查询** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `nodePathAtOffset`, `enclosingNode`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Lint** | `lintStructural`, `applyLintFixes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **结构切片** | `parseSlice`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **异步**   | `interpretTextAsync`, `interpretTokensAsync`, `fromAsyncHandlerMap`, `wrapAsyncHandlers`, `collectNodesAsync`                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **类型**   | `InterpretRuleset`, `InterpretResult`, `ResolvedResult`, `InterpretHelpers`, `UnhandledStrategy`, `TokenHandler`, `TextResult`, `ParserLike`, `ParseOverrides`, `StructuralTagNode`, `StructuralVisitContext`, `StructuralPredicate`, `StructuralVisitor`, `LintRule`, `LintContext`, `LintOptions`, `Diagnostic`, `DiagnosticSeverity`, `Fix`, `TextEdit`, `ReportInfo`, `AsyncInterpretRuleset`, `AsyncInterpretResult`, `AsyncResolvedResult`, `AsyncInterpretHelpers`, `AsyncUnhandledStrategy`, `AsyncTokenHandler`, `Awaitable` |
+| 类别        | 导出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **同步**    | `interpretText`, `interpretTokens`, `flattenText`, `createRuleset`, `fromHandlerMap`, `dropToken`, `unwrapChildren`, `wrapHandlers`, `debugUnhandled`, `collectNodes`                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **结构查询**  | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `nodePathAtOffset`, `enclosingNode`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Lint**  | `lintStructural`, `applyLintFixes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **结构切片**  | `parseSlice`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **增量语法糖** | `toSliceEdit`, `replaceSliceText`, `createSliceSession`, `applyIncrementalEditBySpan`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **异步**    | `interpretTextAsync`, `interpretTokensAsync`, `fromAsyncHandlerMap`, `wrapAsyncHandlers`, `collectNodesAsync`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **类型**    | `InterpretRuleset`, `InterpretResult`, `ResolvedResult`, `InterpretHelpers`, `UnhandledStrategy`, `TokenHandler`, `TextResult`, `ParserLike`, `ParseOverrides`, `SliceSession`, `SliceSessionApplyResult`, `StructuralTagNode`, `StructuralVisitContext`, `StructuralPredicate`, `StructuralVisitor`, `LintRule`, `LintContext`, `LintOptions`, `Diagnostic`, `DiagnosticSeverity`, `Fix`, `TextEdit`, `ReportInfo`, `AsyncInterpretRuleset`, `AsyncInterpretResult`, `AsyncResolvedResult`, `AsyncInterpretHelpers`, `AsyncUnhandledStrategy`, `AsyncTokenHandler`, `Awaitable` |
 
 详见[导出一览 wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/zh-CN-Exports)：完整签名、说明、wiki 内链。
 

@@ -1,5 +1,21 @@
 # 更新日志
 
+### 1.1.0
+
+- 新增：`incremental` 模块——基于 `SourceSpan` 的便捷层，封装 `yume-dsl-rich-text`
+  的增量解析 API
+  - `toSliceEdit(span, newText)` —— 将 `SourceSpan` + 替换文本转为
+    `IncrementalEdit` 载荷
+  - `replaceSliceText(source, span, newText)` —— 用 `SourceSpan` 偏移量对源码文本
+    做替换（纯字符串工具，不触发解析）
+  - `createSliceSession(source, options?, sessionOptions?)` —— 创建增量
+    session（`parseSlice` 工作流附近的语义别名）
+  - `applyIncrementalEditBySpan(session, span, newText, options?)` —— 对增量
+    session 应用基于 span 的编辑；自动构建新源码并委托给 `session.applyEdit(...)`
+- 新增类型：`SliceSession`、`SliceSessionApplyResult`
+- 更新 `yume-dsl-rich-text` 依赖从 `^1.2.0` 至 `^1.2.7`
+  （需要 `>=1.2.7` 才能使用 `createIncrementalSession` 及相关类型）
+
 ### 1.0.7
 
 - 修复：消除深层嵌套 token 树上的栈溢出——`flattenText`、`dfs`

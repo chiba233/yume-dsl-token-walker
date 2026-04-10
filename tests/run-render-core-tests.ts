@@ -8,3 +8,6 @@ await import("./query.test.ts");
 
 console.log("=== Lint ===");
 await import("./lint.test.ts");
+
+console.log("=== Incremental Sugar ===");
+await import("./incremental.test.ts");

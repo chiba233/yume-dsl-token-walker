@@ -22,6 +22,7 @@ Parser gives you trees — this package interprets, queries, lints, and slices t
 - Structural query in O(n) single DFS — `findFirst` early-exits, `nodeAtOffset` / `enclosingNode` binary-narrow then walk
 - Lint framework with atomic all-or-nothing auto-fix — overlapping edits are rejected per-fix, not per-edit
 - Region re-parse via `parseSlice` — ideal for editor and incremental workflows, only reparses the touched region
+- Incremental sugar — span-based helpers that bridge `SourceSpan` positions with `yume-dsl-rich-text`'s incremental session API
 
 > **200 KB benchmark (Kunpeng 920 / Node v24.14.0):** full-document parsing is already fast (`parseRichText` ~24 ms, `parseStructural` ~21 ms). `nodeAtOffset` + `parseSlice` is still the right tool for editor and incremental workflows at **~0.17 ms**, because it reparses only the touched region. Interpret 10,000 tokens → HTML string in **~2 ms**. Lint 50 rules against a 200 KB document in **~45 ms**.
 
@@ -34,7 +35,8 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] / StructuralNode
                                    ├─ interpret  (TextToken[] → TNode[])
                                    ├─ query      (StructuralNode[] search)
                                    ├─ lint       (StructuralNode[] validation)
-                                   └─ slice      (region re-parse)
+                                   ├─ slice      (region re-parse)
+                                   └─ incremental (span-based edit sugar)
 ```
 
 | Package                                                                            | Role                                                     |
@@ -52,7 +54,7 @@ text ──▶ yume-dsl-rich-text (parse) ──▶ TextToken[] / StructuralNode
 [Install](#install) · [Quick Start](#quick-start) · [Where to start](#where-to-start)
 
 **API:**
-[Interpret](#interpret) · [Async Interpret](#async-interpret) · [Structural Query](#structural-query) · [Lint](#lint) · [Structural Slice](#structural-slice)
+[Interpret](#interpret) · [Async Interpret](#async-interpret) · [Structural Query](#structural-query) · [Lint](#lint) · [Structural Slice](#structural-slice) · [Incremental Sugar](#incremental-sugar)
 
 **Reference:**
 [Error Handling & Safety](#error-handling--safety) · [Exports](#exports) · [Changelog](#changelog)
@@ -122,6 +124,7 @@ For direct `TextToken[]` input, use `interpretTokens(...)`.
 | Search / locate nodes in a `StructuralNode[]` tree | [Structural Query](#structural-query) |
 | Validate DSL source with custom rules + auto-fix | [Lint](#lint) |
 | Re-parse a region without full-document re-parse | [Structural Slice](#structural-slice) |
+| Apply span-based edits to an incremental session | [Incremental Sugar](#incremental-sugar) |
 
 ---
 
@@ -451,6 +454,59 @@ the full incremental pipeline demo with interpret.
 
 ---
 
+## Incremental Sugar
+
+Span-based helpers that bridge `SourceSpan` positions with `yume-dsl-rich-text`'s incremental session API. While `parseSlice` reparses a region from scratch, an incremental session reuses previous parse state and only updates the changed portion — ideal for keystroke-level editor integration.
+
+### Quick Start
+
+```ts
+import { createSimpleInlineHandlers } from "yume-dsl-rich-text";
+import { createSliceSession, applyIncrementalEditBySpan } from "yume-dsl-token-walker";
+import type { SourceSpan } from "yume-dsl-rich-text";
+
+const handlers = createSimpleInlineHandlers(["bold"]);
+const source = "head $$bold(world)$$ tail";
+
+// 1. Create a session
+const session = createSliceSession(source, { handlers });
+
+// 2. Build a span for the region to replace
+const start = source.indexOf("world");
+const span: SourceSpan = {
+    start: { offset: start, line: 1, column: start + 1 },
+    end: { offset: start + 5, line: 1, column: start + 6 },
+};
+
+// 3. Apply edit — session updates internally
+const result = applyIncrementalEditBySpan(session, span, "DSL", { handlers });
+
+console.log(result.doc.source); // "head $$bold(DSL)$$ tail"
+console.log(result.mode);       // "incremental" or "full-fallback"
+```
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `toSliceEdit(span, newText)` | Convert `SourceSpan` to `IncrementalEdit` |
+| `replaceSliceText(source, span, newText)` | Pure string replace by span offsets |
+| `createSliceSession(source, options?, sessionOptions?)` | Create an incremental session |
+| `applyIncrementalEditBySpan(session, span, newText, options?)` | Apply span edit to session — builds next source, delegates to `session.applyEdit` |
+
+### When to use Incremental Sugar vs. parseSlice
+
+| | `parseSlice` | Incremental Sugar |
+|---|---|---|
+| Strategy | Re-parse a region from scratch | Reuse previous parse state, update diff |
+| Best for | One-shot region extract, render a slice | Continuous editing, keystroke-level updates |
+| Session | Stateless | Stateful (`SliceSession`) |
+
+See the [Incremental Sugar wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/en-Incremental-Sugar) for
+detailed API reference, type definitions, and session lifecycle.
+
+---
+
 ## Error Handling & Safety
 
 `onError` is called **before** an error is thrown — it observes but does not suppress:
@@ -488,8 +544,9 @@ for logging demos, error phase table, and safety implementation details.
 | **Structural query** | `findFirst`, `findAll`, `walkStructural`, `nodeAtOffset`, `nodePathAtOffset`, `enclosingNode` |
 | **Lint** | `lintStructural`, `applyLintFixes` |
 | **Structural slice** | `parseSlice` |
+| **Incremental sugar** | `toSliceEdit`, `replaceSliceText`, `createSliceSession`, `applyIncrementalEditBySpan` |
 | **Async** | `interpretTextAsync`, `interpretTokensAsync`, `fromAsyncHandlerMap`, `wrapAsyncHandlers`, `collectNodesAsync` |
-| **Types** | `InterpretRuleset`, `InterpretResult`, `ResolvedResult`, `InterpretHelpers`, `UnhandledStrategy`, `TokenHandler`, `TextResult`, `ParserLike`, `ParseOverrides`, `StructuralTagNode`, `StructuralVisitContext`, `StructuralPredicate`, `StructuralVisitor`, `LintRule`, `LintContext`, `LintOptions`, `Diagnostic`, `DiagnosticSeverity`, `Fix`, `TextEdit`, `ReportInfo`, `AsyncInterpretRuleset`, `AsyncInterpretResult`, `AsyncResolvedResult`, `AsyncInterpretHelpers`, `AsyncUnhandledStrategy`, `AsyncTokenHandler`, `Awaitable` |
+| **Types** | `InterpretRuleset`, `InterpretResult`, `ResolvedResult`, `InterpretHelpers`, `UnhandledStrategy`, `TokenHandler`, `TextResult`, `ParserLike`, `ParseOverrides`, `SliceSession`, `SliceSessionApplyResult`, `StructuralTagNode`, `StructuralVisitContext`, `StructuralPredicate`, `StructuralVisitor`, `LintRule`, `LintContext`, `LintOptions`, `Diagnostic`, `DiagnosticSeverity`, `Fix`, `TextEdit`, `ReportInfo`, `AsyncInterpretRuleset`, `AsyncInterpretResult`, `AsyncResolvedResult`, `AsyncInterpretHelpers`, `AsyncUnhandledStrategy`, `AsyncTokenHandler`, `Awaitable` |
 
 See the [Exports wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/en-Exports) for
 full signatures, descriptions, and wiki links per export.

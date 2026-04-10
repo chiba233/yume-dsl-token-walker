@@ -16,6 +16,16 @@ export type {
 
 export { flattenText, interpretText, interpretTokens } from "./interpret.ts";
 export { parseSlice } from "./slice.ts";
+export {
+  applyIncrementalEditBySpan,
+  createSliceSession,
+  replaceSliceText,
+  toSliceEdit,
+  applyTextEditBySpan,
+  createIncrementalSliceSession,
+  spanToIncrementalEdit,
+} from "./incremental.ts";
+export type { SliceSession, SliceSessionApplyResult } from "./incremental.ts";
 export { interpretTextAsync, interpretTokensAsync } from "./interpretAsync.ts";
 export type { AsyncTokenHandler, TokenHandler, TextResult } from "./helpers.ts";
 export {

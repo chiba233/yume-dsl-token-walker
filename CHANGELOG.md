@@ -1,5 +1,22 @@
 # Changelog
 
+### 1.1.0
+
+- New: `incremental` module — span-based convenience layer over
+  `yume-dsl-rich-text`'s incremental parsing API
+  - `toSliceEdit(span, newText)` — convert a `SourceSpan` + replacement
+    text to an `IncrementalEdit` payload
+  - `replaceSliceText(source, span, newText)` — apply a replacement to source
+    text using `SourceSpan` offsets (pure string helper, no parse)
+  - `createSliceSession(source, options?, sessionOptions?)` — create an
+    incremental session (thin alias for clarity near `parseSlice` workflows)
+  - `applyIncrementalEditBySpan(session, span, newText, options?)` — apply a
+    span-based edit directly to an incremental session; builds next source and
+    delegates to `session.applyEdit(...)`
+- New types: `SliceSession`, `SliceSessionApplyResult`
+- Updated `yume-dsl-rich-text` dependency from `^1.2.0` to `^1.2.7`
+  (requires `>=1.2.7` for `createIncrementalSession` and related types)
+
 ### 1.0.7
 
 - Fix: eliminate stack overflow on deeply nested token trees — `flattenText`, `dfs`

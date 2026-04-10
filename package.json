@@ -29,6 +29,8 @@
   "scripts": {
     "build": "tsup --target esnext",
     "test": "tsup --target esnext && node --import tsx tests/run-render-core-tests.ts",
+    "test:coverage": "YUME_DSL_COVERAGE_SOURCEMAP=1 tsup --target esnext && c8 node --enable-source-maps --import tsx tests/run-render-core-tests.ts",
+    "test:coverage:win": "set YUME_DSL_COVERAGE_SOURCEMAP=1&& tsup --target esnext && c8 node --enable-source-maps --import tsx tests/run-render-core-tests.ts",
     "lint": "tsc --noEmit"
   },
   "keywords": [
@@ -57,12 +59,13 @@
     "node": ">=18"
   },
   "dependencies": {
-    "yume-dsl-rich-text": "^1.2.0"
+    "yume-dsl-rich-text": "^1.2.7"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "c8": "^11.0.0"
   }
 }
