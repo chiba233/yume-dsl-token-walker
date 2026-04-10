@@ -4,6 +4,7 @@ import {
   createParser,
   createSimpleInlineHandlers,
   parseRichText,
+  type StructuralNode,
   type TextToken,
 } from "yume-dsl-rich-text";
 import {
@@ -166,6 +167,55 @@ const cases: TestCase[] = [
         start: { offset: start, line: 2, column: 1 },
         end: { offset: end, line: 2, column: 16 },
       });
+    },
+  },
+  {
+    name: "parseSlice -> should use provided fullTree for shorthand fallback without structural reparse",
+    run: () => {
+      const fullText = "$$bold(1234underline()test())$$";
+      const shorthandStart = fullText.indexOf("underline()");
+      const shorthandEnd = shorthandStart + "underline()".length;
+      const shorthandNode: StructuralNode = {
+        type: "inline",
+        tag: "underline",
+        children: [],
+        position: {
+          start: { offset: shorthandStart, line: 1, column: shorthandStart + 1 },
+          end: { offset: shorthandEnd, line: 1, column: shorthandEnd + 1 },
+        },
+      };
+      (shorthandNode as Record<string, unknown>).implicitInlineShorthand = true;
+      const fullTree: StructuralNode[] = [
+        {
+          type: "inline",
+          tag: "bold",
+          children: [shorthandNode],
+          position: {
+            start: { offset: 0, line: 1, column: 1 },
+            end: { offset: fullText.length, line: 1, column: fullText.length + 1 },
+          },
+        },
+      ];
+      const parserWithoutStructural = {
+        parse: (input: string): TextToken[] => {
+          if (input === "underline()") {
+            return [{ type: "text", value: "underline()", id: "echo" }];
+          }
+          if (input === fullText) {
+            return [{ type: "bold", value: [], id: "bold-0" }];
+          }
+          return [{ type: "text", value: input, id: "default" }];
+        },
+      };
+      const shorthandSpan = shorthandNode.position;
+      if (!shorthandSpan) {
+        throw new Error("shorthand span missing");
+      }
+
+      const tokens = parseSlice(fullText, shorthandSpan, parserWithoutStructural, undefined, fullTree);
+
+      assert.equal(tokens.length, 1);
+      assert.equal(tokens[0].type, "bold");
     },
   },
   {

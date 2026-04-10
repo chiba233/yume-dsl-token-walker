@@ -8,8 +8,13 @@
 - `parseSlice(...)` now adds shorthand-aware fallback:
   when the direct slice parse degenerates to plain-text echo for an implicit
   shorthand inline span, it reparses the enclosing parent tag span (when available).
+  New optional `fullTree` parameter allows callers to pass a precomputed structural
+  tree, avoiding a redundant `parser.structural(...)` reparse.
 - `ParserLike` now accepts optional `structural(input, overrides?)` capability
   so `parseSlice(...)` can perform structural fallback without runtime casting.
+- Refactor: `switch` blocks in `interpret` / `interpretAsync` replaced with
+  table-driven dispatch (`applyUnhandledStrategy`) and shared traversal guards
+  (`assertTextValue`, `assertNotRecursive`), removing ~30 lines of duplication.
 - Compatibility update: aligned with `yume-dsl-rich-text` structural inline
   shorthand marker (`implicitInlineShorthand`).
 

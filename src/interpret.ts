@@ -8,6 +8,31 @@ import type {
 import type { TextToken } from "yume-dsl-rich-text";
 import { reportError, toError } from "./internalErrors.ts";
 
+// ── Strategy dispatch (shared by sync & async interpret) ──
+
+const strategyResultMap: Record<string, { type: "flatten" } | { type: "drop" }> = {
+  flatten: { type: "flatten" },
+  drop: { type: "drop" },
+};
+
+export const applyUnhandledStrategy = <TNode, TEnv>(
+  strategy: string,
+  token: TextToken,
+  onError: InterpretRuleset<TNode, TEnv>["onError"],
+  env: TEnv,
+): ResolvedResult<TNode> => {
+  if (strategy === "throw") {
+    const error = new Error(`No handler defined for DSL token type "${token.type}"`);
+    reportError(onError, env, error, "interpret", token);
+    throw error;
+  }
+  const mapped = strategyResultMap[strategy];
+  if (mapped) return mapped;
+  const error = new Error("Unknown unhandled strategy: " + String(strategy));
+  reportError(onError, env, error, "internal", token);
+  throw error;
+};
+
 // ── Companion utility: flattenText ──
 
 // 迭代式 flatten：显式栈替代递归，任意嵌套深度不爆栈。
@@ -113,23 +138,32 @@ const resolveResult = <TNode, TEnv>(
     }
   }
 
-  switch (strategy) {
-    case "throw": {
-      const error = new Error(`No handler defined for DSL token type "${token.type}"`);
-      reportError(ruleset.onError, helpers.env, error, "interpret", token);
-      throw error;
-    }
-    case "flatten":
-      return { type: "flatten" };
-    case "drop":
-      return { type: "drop" };
-    default: {
-      void (strategy satisfies never);
-      const error = new Error("Unknown unhandled strategy: " + String(strategy));
-      reportError(ruleset.onError, helpers.env, error, "internal", token);
-      throw error;
-    }
-  }
+  return applyUnhandledStrategy(strategy, token, ruleset.onError, helpers.env);
+};
+
+// ── Shared traversal guards (sync & async) ──
+
+export const assertTextValue = <TEnv>(
+  token: TextToken,
+  onError: InterpretRuleset<unknown, TEnv>["onError"],
+  env: TEnv,
+): void => {
+  if (typeof token.value === "string") return;
+  const error = new Error("DSL text token value must be a string");
+  reportError(onError, env, error, "traversal", token);
+  throw error;
+};
+
+export const assertNotRecursive = <TEnv>(
+  token: TextToken,
+  activeTokens: WeakSet<TextToken>,
+  onError: InterpretRuleset<unknown, TEnv>["onError"],
+  env: TEnv,
+): void => {
+  if (!activeTokens.has(token)) return;
+  const error = new Error(`Recursive DSL token detected for type "${token.type}"`);
+  reportError(onError, env, error, "traversal", token);
+  throw error;
 };
 
 // ── Internal: traversal ──
@@ -142,21 +176,12 @@ const interpretIterable = function* <TNode, TEnv>(
 ): Generator<TNode> {
   for (const token of tokens) {
     if (token.type === "text") {
-      if (typeof token.value !== "string") {
-        const error = new Error("DSL text token value must be a string");
-        reportError(ruleset.onError, helpers.env, error, "traversal", token);
-        throw error;
-      }
-      yield ruleset.createText(token.value);
+      assertTextValue(token, ruleset.onError, helpers.env);
+      yield ruleset.createText(token.value as string);
       continue;
     }
 
-    if (activeTokens.has(token)) {
-      const error = new Error(`Recursive DSL token detected for type "${token.type}"`);
-      reportError(ruleset.onError, helpers.env, error, "traversal", token);
-      throw error;
-    }
-
+    assertNotRecursive(token, activeTokens, ruleset.onError, helpers.env);
     activeTokens.add(token);
     try {
       const result = resolveResult(token, ruleset, helpers);

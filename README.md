@@ -442,7 +442,13 @@ if (boldNode?.position) {
 ### API
 
 ```ts
-function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, tracker?: PositionTracker): TextToken[];
+function parseSlice(
+    fullText: string,
+    span: SourceSpan,
+    parser: ParserLike,
+    tracker?: PositionTracker,
+    fullTree?: StructuralNode[],
+): TextToken[];
 ```
 
 ```ts
@@ -451,6 +457,9 @@ interface ParserLike {
     structural?: (input: string, overrides?: ParseOverrides) => StructuralNode[];
 }
 ```
+
+`fullTree` is optional upstream structural data for shorthand fallback optimization.
+When provided, `parseSlice` reuses it instead of calling `parser.structural(...)`.
 
 Without `tracker`: offset correct, line/column local to slice. With `tracker`: all three correct.
 Build the tracker **once** with `buildPositionTracker(fullText)` — only rebuild when newlines change.

@@ -29,11 +29,12 @@ const parseSpan = (
     tracker,
   });
 
-const pickEnclosingTagSpan = (nodes: StructuralNode[], span: SourceSpan): SourceSpan | undefined => {
-  const probe = span.start.offset;
-  const path = nodePathAtOffset(nodes, probe);
+const pickEnclosingTagSpanFromTree = (
+  nodes: StructuralNode[],
+  span: SourceSpan,
+): SourceSpan | undefined => {
+  const path = nodePathAtOffset(nodes, span.start.offset);
   if (path.length === 0) return undefined;
-
   let matchedIndex = -1;
   for (let i = path.length - 1; i >= 0; i--) {
     const pos = path[i].position;
@@ -72,19 +73,27 @@ const pickEnclosingTagSpan = (nodes: StructuralNode[], span: SourceSpan): Source
  * @param tracker   Optional pre-built tracker from the full document
  *                  (`buildPositionTracker(fullText)`). When provided, `line`/`column`
  *                  are also correct; without it, only `offset` is shifted.
+ * @param fullTree  Optional precomputed structural tree for `fullText`.
+ *                  When provided, shorthand fallback reuses it instead of calling
+ *                  `parser.structural(...)`.
  */
 export const parseSlice = (
   fullText: string,
   span: SourceSpan,
   parser: ParserLike,
   tracker?: PositionTracker,
+  fullTree?: StructuralNode[],
 ): TextToken[] => {
   const direct = parseSpan(fullText, span, parser, tracker);
   if (!isTextEcho(direct, fullText.slice(span.start.offset, span.end.offset))) return direct;
+
+  const parentFromProvidedTree = fullTree ? pickEnclosingTagSpanFromTree(fullTree, span) : undefined;
+  if (parentFromProvidedTree) return parseSpan(fullText, parentFromProvidedTree, parser, tracker);
+
   if (!parser.structural) return direct;
 
-  const fullTree = parser.structural(fullText, { trackPositions: true });
-  const parentSpan = pickEnclosingTagSpan(fullTree, span);
+  const parsedTree = parser.structural(fullText, { trackPositions: true });
+  const parentSpan = pickEnclosingTagSpanFromTree(parsedTree, span);
   if (!parentSpan) return direct;
   return parseSpan(fullText, parentSpan, parser, tracker);
 };

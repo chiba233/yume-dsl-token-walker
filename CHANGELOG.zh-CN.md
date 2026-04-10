@@ -7,8 +7,13 @@
 - `parseSlice(...)` 新增 shorthand 感知回退：
   当直接切片解析在 implicit shorthand inline span 上退化为纯文本回显时，
   会尝试回退重解析其父级包围标签 span（可用时）。
+  新增可选 `fullTree` 参数，允许调用方传入预计算的结构树，避免冗余的
+  `parser.structural(...)` 重解析。
 - `ParserLike` 新增可选 `structural(input, overrides?)` 能力声明，
   以便 `parseSlice(...)` 在不做运行时强制转换的前提下执行结构回退。
+- 重构：`interpret` / `interpretAsync` 中的 `switch` 块替换为
+  表驱动分发（`applyUnhandledStrategy`）和共享遍历守卫
+  （`assertTextValue`、`assertNotRecursive`），消除约 30 行重复代码。
 - 兼容性更新：与 `yume-dsl-rich-text` 的 structural inline shorthand 标记
   （`implicitInlineShorthand`）对齐。
 

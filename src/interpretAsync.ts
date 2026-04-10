@@ -1,5 +1,5 @@
 import type { TextToken } from "yume-dsl-rich-text";
-import { flattenText } from "./interpret.ts";
+import { applyUnhandledStrategy, assertNotRecursive, assertTextValue, flattenText } from "./interpret.ts";
 import { reportError, toError } from "./internalErrors.ts";
 import type {
   AsyncInterpretHelpers,
@@ -88,23 +88,7 @@ const resolveResult = async <TNode, TEnv>(
     }
   }
 
-  switch (strategy) {
-    case "throw": {
-      const error = new Error(`No handler defined for DSL token type "${token.type}"`);
-      reportError(ruleset.onError, helpers.env, error, "interpret", token);
-      throw error;
-    }
-    case "flatten":
-      return { type: "flatten" };
-    case "drop":
-      return { type: "drop" };
-    default: {
-      void (strategy satisfies never);
-      const error = new Error("Unknown unhandled strategy: " + String(strategy));
-      reportError(ruleset.onError, helpers.env, error, "internal", token);
-      throw error;
-    }
-  }
+  return applyUnhandledStrategy(strategy, token, ruleset.onError, helpers.env);
 };
 
 const interpretIterableAsync = async function* <TNode, TEnv>(
@@ -115,21 +99,12 @@ const interpretIterableAsync = async function* <TNode, TEnv>(
 ): AsyncGenerator<TNode> {
   for (const token of tokens) {
     if (token.type === "text") {
-      if (typeof token.value !== "string") {
-        const error = new Error("DSL text token value must be a string");
-        reportError(ruleset.onError, helpers.env, error, "traversal", token);
-        throw error;
-      }
-      yield ruleset.createText(token.value);
+      assertTextValue(token, ruleset.onError, helpers.env);
+      yield ruleset.createText(token.value as string);
       continue;
     }
 
-    if (activeTokens.has(token)) {
-      const error = new Error(`Recursive DSL token detected for type "${token.type}"`);
-      reportError(ruleset.onError, helpers.env, error, "traversal", token);
-      throw error;
-    }
-
+    assertNotRecursive(token, activeTokens, ruleset.onError, helpers.env);
     activeTokens.add(token);
     try {
       const result = await resolveResult(token, ruleset, helpers);

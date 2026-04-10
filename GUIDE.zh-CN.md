@@ -482,7 +482,13 @@ if (boldNode?.position) {
 ### API
 
 ```ts
-function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, tracker?: PositionTracker): TextToken[];
+function parseSlice(
+    fullText: string,
+    span: SourceSpan,
+    parser: ParserLike,
+    tracker?: PositionTracker,
+    fullTree?: StructuralNode[],
+): TextToken[];
 ```
 
 ```ts
@@ -491,6 +497,9 @@ interface ParserLike {
     structural?: (input: string, overrides?: ParseOverrides) => StructuralNode[];
 }
 ```
+
+`fullTree` 是可选的上游结构树（用于 shorthand 回退优化）。
+传入后会复用它，而不是再调用 `parser.structural(...)`。
 
 没 `tracker`：offset 正确，line/column 局部。有 `tracker`：三者都正确。
 用 `buildPositionTracker(fullText)` **构建一次**——只在换行变化时重建。
