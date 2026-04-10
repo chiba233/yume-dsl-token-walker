@@ -1,4 +1,4 @@
-import type { PositionTracker, SourceSpan, TextToken } from "yume-dsl-rich-text";
+import type { PositionTracker, SourceSpan, StructuralNode, TextToken } from "yume-dsl-rich-text";
 
 // ── Result ──
 
@@ -10,8 +10,13 @@ export interface ParseOverrides {
   tracker?: PositionTracker;
 }
 
+export interface StructuralOverrides {
+  trackPositions?: boolean;
+}
+
 export interface ParserLike {
   parse: (input: string, overrides?: ParseOverrides) => TextToken[];
+  structural?: (input: string, overrides?: StructuralOverrides) => StructuralNode[];
 }
 
 export type InterpretResult<TNode> =

@@ -1,5 +1,18 @@
 # Changelog
 
+### 1.2.0
+
+- `enclosingNode(...)` now skips inline nodes marked as implicit shorthand
+  (`implicitInlineShorthand === true`) when selecting the enclosing tag target.
+  This makes cursor-hit targeting prefer independently sliceable outer tag nodes.
+- `parseSlice(...)` now adds shorthand-aware fallback:
+  when the direct slice parse degenerates to plain-text echo for an implicit
+  shorthand inline span, it reparses the enclosing parent tag span (when available).
+- `ParserLike` now accepts optional `structural(input, overrides?)` capability
+  so `parseSlice(...)` can perform structural fallback without runtime casting.
+- Compatibility update: aligned with `yume-dsl-rich-text` structural inline
+  shorthand marker (`implicitInlineShorthand`).
+
 ### 1.1.0
 
 - New: `incremental` module — span-based convenience layer over

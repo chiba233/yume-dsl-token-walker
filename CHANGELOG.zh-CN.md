@@ -1,5 +1,17 @@
 # 更新日志
 
+### 1.2.0
+
+- `enclosingNode(...)` 在选择包围标签目标时，会跳过标记为隐式简写的 inline 节点
+  （`implicitInlineShorthand === true`），让光标命中优先落到可独立切片的外层标签节点。
+- `parseSlice(...)` 新增 shorthand 感知回退：
+  当直接切片解析在 implicit shorthand inline span 上退化为纯文本回显时，
+  会尝试回退重解析其父级包围标签 span（可用时）。
+- `ParserLike` 新增可选 `structural(input, overrides?)` 能力声明，
+  以便 `parseSlice(...)` 在不做运行时强制转换的前提下执行结构回退。
+- 兼容性更新：与 `yume-dsl-rich-text` 的 structural inline shorthand 标记
+  （`implicitInlineShorthand`）对齐。
+
 ### 1.1.0
 
 - 新增：`incremental` 模块——基于 `SourceSpan` 的便捷层，封装 `yume-dsl-rich-text`

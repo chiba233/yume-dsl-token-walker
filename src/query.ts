@@ -198,6 +198,10 @@ export const nodePathAtOffset = (
 const isTagNode = (node: StructuralNode): node is StructuralTagNode =>
   node.type === "inline" || node.type === "raw" || node.type === "block";
 
+const isImplicitInlineShorthandNode = (node: StructuralNode): boolean =>
+  node.type === "inline" &&
+  (node as Record<string, unknown>).implicitInlineShorthand === true;
+
 /**
  * Find the deepest tag node (inline / raw / block) whose source span
  * contains the given source offset.
@@ -217,7 +221,10 @@ export const enclosingNode = (
     for (const node of arr) {
       const pos = node.position;
       if (!pos || offset < pos.start.offset || offset >= pos.end.offset) continue;
-      if (isTagNode(node)) best = node;
+      if (isTagNode(node)) {
+        const isImplicitInline = isImplicitInlineShorthandNode(node);
+        if (!isImplicitInline) best = node;
+      }
       const groups = getChildGroups(node);
       for (let g = groups.length - 1; g >= 0; g--) stack.push(groups[g]);
     }

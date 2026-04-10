@@ -310,7 +310,7 @@ const html = (
 | `walkStructural`   | `(nodes, visitor) => void`                          | DFS——带上下文访问每个节点            |
 | `nodeAtOffset`     | `(nodes, offset) => StructuralNode \| undefined`    | 最深节点定位                     |
 | `nodePathAtOffset` | `(nodes, offset) => StructuralNode[]`               | 从根到最深命中节点的完整路径             |
-| `enclosingNode`    | `(nodes, offset) => StructuralTagNode \| undefined` | 最深**标签**节点（跳过 text/escape） |
+| `enclosingNode`    | `(nodes, offset) => StructuralTagNode \| undefined` | 最深**标签**节点（跳过 text/escape 与隐式简写 inline 节点） |
 
 ### 示例：编辑器光标定位
 
@@ -324,6 +324,9 @@ const tree = parseStructural(source, {trackPositions: true});
 const tag = enclosingNode(tree, 22);
 // tag.tag === "italic" —— 最深的包围标签
 ```
+
+当上游启用 `implicitInlineShorthand` 时，`enclosingNode` 会跳过
+`implicitInlineShorthand === true` 的 inline 节点，让光标命中优先落到可独立切片的外层标签。
 
 ### 示例：找所有 bold 标签
 
@@ -456,6 +459,9 @@ type DiagnosticSeverity = "error" | "warning" | "info" | "hint";
 只重解析你刚修改的那一小段。全量解析已经很快，但在光标附近编辑、增量诊断、局部预览这类场景里，`parseSlice`
 仍然更合适，因为没必要每次都重跑整篇文档。`parseStructural` 给你地图；`parseSlice` 跳到任意一点。
 
+当上游启用 shorthand 时，`parseSlice` 会做 shorthand 感知回退：如果直接按 span
+解析在隐式简写 inline 区间退化为纯文本回显，会在可用时回退到父级包围标签 span 重解析。
+
 ```ts
 import {createParser, createSimpleInlineHandlers, buildPositionTracker} from "yume-dsl-rich-text";
 import {parseSlice} from "yume-dsl-token-walker";
@@ -477,6 +483,13 @@ if (boldNode?.position) {
 
 ```ts
 function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, tracker?: PositionTracker): TextToken[];
+```
+
+```ts
+interface ParserLike {
+    parse: (input: string, overrides?: ParseOverrides) => TextToken[];
+    structural?: (input: string, overrides?: ParseOverrides) => StructuralNode[];
+}
 ```
 
 没 `tracker`：offset 正确，line/column 局部。有 `tracker`：三者都正确。

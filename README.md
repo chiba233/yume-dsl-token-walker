@@ -298,7 +298,7 @@ Search and locate nodes in a `StructuralNode[]` tree from `parseStructural`.
 | `walkStructural` | `(nodes, visitor) => void` | DFS — visit every node with context |
 | `nodeAtOffset` | `(nodes, offset) => StructuralNode \| undefined` | Deepest node at source offset |
 | `nodePathAtOffset` | `(nodes, offset) => StructuralNode[]` | Full path from root to deepest node at offset |
-| `enclosingNode` | `(nodes, offset) => StructuralTagNode \| undefined` | Deepest **tag** node (skips text/escape) |
+| `enclosingNode` | `(nodes, offset) => StructuralTagNode \| undefined` | Deepest **tag** node (skips text/escape and implicit shorthand inline nodes) |
 
 ### Example: editor cursor location
 
@@ -312,6 +312,10 @@ const tree = parseStructural(source, { trackPositions: true });
 const tag = enclosingNode(tree, 22);
 // tag.tag === "italic" — the deepest enclosing tag
 ```
+
+With upstream `implicitInlineShorthand` enabled, inline nodes marked as shorthand
+(`implicitInlineShorthand === true`) are skipped as enclosing targets so cursor hit
+testing prefers outer independently-sliceable tags.
 
 ### Example: find all bold tags
 
@@ -414,6 +418,10 @@ for a CI-ready pipeline.
 
 Re-parse only the region you touched. Full parsing is already fast, but `parseSlice` is for cursor-local and incremental workflows where reparsing the whole document is unnecessary. `parseStructural` gives you the map; `parseSlice` jumps to any point.
 
+When shorthand is enabled upstream, `parseSlice` is shorthand-aware: if direct
+slice parse on an implicit shorthand inline span degrades to plain-text echo, it
+falls back to reparsing the enclosing parent tag span (when available).
+
 ```ts
 import { createParser, createSimpleInlineHandlers, buildPositionTracker } from "yume-dsl-rich-text";
 import { parseSlice } from "yume-dsl-token-walker";
@@ -435,6 +443,13 @@ if (boldNode?.position) {
 
 ```ts
 function parseSlice(fullText: string, span: SourceSpan, parser: ParserLike, tracker?: PositionTracker): TextToken[];
+```
+
+```ts
+interface ParserLike {
+    parse: (input: string, overrides?: ParseOverrides) => TextToken[];
+    structural?: (input: string, overrides?: ParseOverrides) => StructuralNode[];
+}
 ```
 
 Without `tracker`: offset correct, line/column local to slice. With `tracker`: all three correct.
