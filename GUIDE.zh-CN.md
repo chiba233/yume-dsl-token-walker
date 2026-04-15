@@ -567,6 +567,8 @@ console.log(result.mode);       // "incremental" 或 "full-fallback"
 | 适合 | 一次性区域提取、渲染切片 | 持续编辑、逐键更新           |
 | 会话 | 无状态          | 有状态（`SliceSession`） |
 
+`applyIncrementalEditBySpan(...)` 有意只委托给 `session.applyEdit(...)`，重点是推进快照本身。如果你还需要 `yume-dsl-rich-text` 的结构化 diff 结果，可以先用 `toSliceEdit(...)` 生成 `IncrementalEdit`、用 `replaceSliceText(...)` 生成新源码，再直接对底层 session 调 `session.applyEditWithDiff(...)`。
+
 详见[增量语法糖 wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/zh-CN-Incremental-Sugar)：完整 API
 参考、类型定义、session 生命周期。
 

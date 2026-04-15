@@ -526,6 +526,8 @@ console.log(result.mode);       // "incremental" or "full-fallback"
 | Best for | One-shot region extract, render a slice | Continuous editing, keystroke-level updates |
 | Session | Stateless | Stateful (`SliceSession`) |
 
+`applyIncrementalEditBySpan(...)` intentionally delegates to `session.applyEdit(...)` and focuses on snapshot advancement. If you also need the structural diff payload from `yume-dsl-rich-text`, build the `IncrementalEdit` via `toSliceEdit(...)`, the next source via `replaceSliceText(...)`, and call `session.applyEditWithDiff(...)` on the underlying session yourself.
+
 See the [Incremental Sugar wiki](https://github.com/chiba233/yume-dsl-token-walker/wiki/en-Incremental-Sugar) for
 detailed API reference, type definitions, and session lifecycle.
 
