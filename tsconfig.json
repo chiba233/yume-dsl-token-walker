@@ -12,6 +12,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "rootDir": ".",
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
     "paths": {
