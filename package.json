@@ -31,7 +31,8 @@
     "test": "tsup --target esnext && node --import tsx tests/run-render-core-tests.ts",
     "test:coverage": "YUME_DSL_COVERAGE_SOURCEMAP=1 tsup --target esnext && c8 node --enable-source-maps --import tsx tests/run-render-core-tests.ts",
     "test:coverage:win": "set YUME_DSL_COVERAGE_SOURCEMAP=1&& tsup --target esnext && c8 node --enable-source-maps --import tsx tests/run-render-core-tests.ts",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "npm run lint:eslint && tsc --noEmit -p tsconfig.json",
+    "lint:eslint": "eslint \"src/**/*.ts\""
   },
   "keywords": [
     "yume-dsl",
@@ -59,12 +60,15 @@
     "node": ">=18"
   },
   "dependencies": {
-    "yume-dsl-rich-text": "^1.3.5"
+    "yume-dsl-rich-text": "^1.4.2"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
+    "eslint": "^10.2.1",
+    "globals": "^17.5.0",
+    "typescript-eslint": "^8.58.2",
     "typescript": "^6.0.3",
     "c8": "^11.0.0"
   }
